@@ -7,21 +7,35 @@ from django.shortcuts import redirect
 from decimal import Decimal, InvalidOperation
 import csv, io, re, datetime
 
-from .models import Bem
+from .models import Bem, Sala
 
-# --- Form de upload ---
-class UploadCSVForm(forms.Form):
-    arquivo = forms.FileField(label="Arquivo CSV (SUAP)")
-
-# --- Helpers de parsing/normalização ---
+# --------- Utils de normalização ----------
 def _norm_str(v):
     if v is None:
         return None
     s = str(v).strip()
     if not s:
         return None
-    # colapsa espaços múltiplos
     return re.sub(r"\s+", " ", s)
+
+def _split_sala_bloco(sala_str):
+    """
+    Extrai o BLOCO como o *último* conteúdo entre parênteses no fim do texto da SALA.
+    Ex.: "LAB METRO (LAB MÚSICA)(BLOCO ADMINISTRATIVO 01)"
+         -> nome: "LAB METRO (LAB MÚSICA)"
+         -> bloco: "BLOCO ADMINISTRATIVO 01"
+    """
+    s0 = _norm_str(sala_str)
+    if not s0:
+        return None, None
+    if s0.endswith(")") and "(" in s0:
+        i = s0.rfind("(")
+        j = s0.rfind(")")
+        if 0 <= i < j:
+            bloco = _norm_str(s0[i+1:j])
+            nome = _norm_str(s0[:i])
+            return (nome or s0), bloco
+    return s0, None
 
 def _parse_date(v):
     s = _norm_str(v)
@@ -32,14 +46,13 @@ def _parse_date(v):
             return datetime.datetime.strptime(s, fmt).date()
         except ValueError:
             pass
-    return None  # data inválida → ignora (não quebra import)
+    return None
 
 def _parse_decimal(v):
     s = _norm_str(v)
     if not s:
         return None
     try:
-        # Heurística: último separador é decimal
         if "," in s and "." in s:
             if s.rfind(",") > s.rfind("."):
                 s = s.replace(".", "").replace(",", ".")
@@ -51,7 +64,42 @@ def _parse_decimal(v):
     except (InvalidOperation, ValueError):
         return None
 
-# Cabeçalhos esperados -> campos do modelo
+# --------- Admin de Sala ----------
+@admin.register(Sala)
+class SalaAdmin(admin.ModelAdmin):
+    list_display = ("nome", "bloco", "setores", "total_bens")
+    list_filter = ("bloco",)
+    search_fields = ("nome", "bloco")
+
+    def setores(self, obj):
+        """
+        Lista de setores (distintos) presentes nos Bens dessa sala.
+        """
+        setores = set()
+        for s in Bem.objects.filter(sala__isnull=False).values_list("sala", "setor_responsavel"):
+            nome, bloco = _split_sala_bloco(s[0])
+            if nome == obj.nome and (bloco or None) == (obj.bloco or None):
+                setor = _norm_str(s[1])
+                if setor:
+                    setores.add(setor)
+        # ordena e junta numa string
+        return ", ".join(sorted(setores)) if setores else "-"
+    setores.short_description = "Setores"
+
+    def total_bens(self, obj):
+        count = 0
+        for sala_txt in Bem.objects.filter(sala__isnull=False).values_list("sala", flat=True):
+            nome, bloco = _split_sala_bloco(sala_txt)
+            if nome == obj.nome and (bloco or None) == (obj.bloco or None):
+                count += 1
+        return count
+    total_bens.short_description = "Bens"
+
+# --------- Form de upload ----------
+class UploadCSVForm(forms.Form):
+    arquivo = forms.FileField(label="Arquivo CSV (SUAP)")
+
+# --------- Mapeamento de cabeçalhos ----------
 FIELD_MAP = {
     "NUMERO": "tombamento",
     "STATUS": "status",
@@ -73,14 +121,40 @@ FIELD_MAP = {
     "SALA": "sala",
     "ESTADO DE CONSERVAÇÃO": "estado_conservacao",
 }
-REQUIRED_HEADERS = {"NUMERO", "DESCRICAO"}  # mínimo para operar
+REQUIRED_HEADERS = {"NUMERO", "DESCRICAO"}
 
 def _normalize_header(h):
-    # Normaliza para bater com FIELD_MAP: uppercase e espaços simples
     h = (h or "").strip()
     h = re.sub(r"\s+", " ", h)
     return h.upper()
 
+def _rebuild_salas_from_pairs(desired_pairs):
+    """
+    Reconstrói Salas com base no conjunto de pares (nome, bloco).
+    - Cria novas que faltam.
+    - Remove as que não estiverem mais presentes.
+    """
+    desired = set()
+    for nome, bloco in desired_pairs:
+        n = _norm_str(nome)
+        b = _norm_str(bloco)
+        if n:
+            desired.add((n, b))
+
+    existentes = { (s.nome, (s.bloco or None)): s for s in Sala.objects.all() }
+    keep = set(desired)
+
+    # criar faltantes
+    to_create = keep - set(existentes.keys())
+    if to_create:
+        Sala.objects.bulk_create([Sala(nome=n, bloco=b) for (n, b) in to_create])
+
+    # remover obsoletas
+    to_delete = set(existentes.keys()) - keep
+    if to_delete:
+        Sala.objects.filter(id__in=[existentes[k].id for k in to_delete]).delete()
+
+# --------- Bem + Importação ----------
 @admin.register(Bem)
 class BemAdmin(admin.ModelAdmin):
     change_list_template = "admin/patrimonio/bem/change_list.html"
@@ -90,81 +164,69 @@ class BemAdmin(admin.ModelAdmin):
     list_filter = ("status", "estado_conservacao", "setor_responsavel")
     ordering = ("tombamento",)
 
-    # Desabilita criação manual: apenas via CSV (edição manual continua permitida)
     def has_add_permission(self, request):
-        return False
+        return False  # apenas via CSV (edição manual ainda permitida)
 
-    # URL custom para importar CSV
     def get_urls(self):
         urls = super().get_urls()
         custom = [
-            path(
-                "importar-csv/",
-                self.admin_site.admin_view(self.importar_csv_view),
-                name="patrimonio_bem_importar_csv",
-            ),
+            path("importar-csv/", self.admin_site.admin_view(self.importar_csv_view), name="patrimonio_bem_importar_csv"),
         ]
         return custom + urls
 
     def importar_csv_view(self, request):
-        context = dict(
-            self.admin_site.each_context(request),
-            opts=self.model._meta,
-            title="Importar CSV do SUAP",
-        )
+        context = dict(self.admin_site.each_context(request), opts=self.model._meta, title="Importar CSV do SUAP")
 
         if request.method == "POST":
             form = UploadCSVForm(request.POST, request.FILES)
             if form.is_valid():
                 f = form.cleaned_data["arquivo"]
 
-                # Lê bytes e decodifica como UTF-8 (aceita BOM); fallback latin-1
                 raw = f.read()
                 try:
                     text = raw.decode("utf-8-sig", errors="strict")
                 except UnicodeDecodeError:
                     text = raw.decode("latin-1")
 
-                # Detectar delimitador: tenta Sniffer; se falhar, conta vírgulas vs ponto-e-vírgulas
+                # Delimitador
                 sample = "\n".join(text.splitlines()[:10])
                 try:
-                    dialect = csv.Sniffer().sniff(sample, delimiters=",;")
+                    import csv as _csv
+                    dialect = _csv.Sniffer().sniff(sample, delimiters=",;")
                     delim = dialect.delimiter
-                except csv.Error:
+                except Exception:
                     delim = "," if sample.count(",") >= sample.count(";") else ";"
 
                 reader = csv.DictReader(io.StringIO(text), delimiter=delim)
                 raw_headers = reader.fieldnames or []
                 norm_headers = [_normalize_header(h) for h in raw_headers]
 
-                # Validação de cabeçalhos obrigatórios
+                # Cabeçalhos obrigatórios
                 missing = [h for h in REQUIRED_HEADERS if h not in norm_headers]
                 if missing:
                     messages.error(request, f"Cabeçalhos obrigatórios ausentes: {', '.join(missing)}.")
                     return TemplateResponse(request, "admin/patrimonio/bem/importar_csv.html", {**context, "form": form})
 
-                # Mapa: header normalizado -> header cru do arquivo
                 norm_to_raw = { _normalize_header(h): h for h in raw_headers }
-
-                # Mapa: header normalizado -> campo do modelo
                 header_to_field = { h: FIELD_MAP[h] for h in norm_headers if h in FIELD_MAP }
 
-                # Import linha a linha (parcial)
                 criados = 0
                 atualizados = 0
                 erros = 0
                 erros_msgs = []
                 vistos_no_arquivo = set()
-                linha_num = 1  # cabeçalho
+                linha_num = 1
+
+                # pares (nome, bloco) desejados
+                desired_salas = set()
 
                 for row in reader:
                     linha_num += 1
                     try:
-                        # >>> pular linha totalmente vazia <<<
+                        # pular linha totalmente vazia
                         if all((not _norm_str(row.get(h))) for h in raw_headers):
                             continue
 
-                        # Extrai e normaliza valores conforme campo
                         data = {}
                         for hdr_norm, field in header_to_field.items():
                             raw_key = norm_to_raw.get(hdr_norm)
@@ -181,15 +243,13 @@ class BemAdmin(admin.ModelAdmin):
                         if not tomb or not desc:
                             raise ValueError("Campos obrigatórios faltando (NUMERO e/ou DESCRICAO).")
 
-                        # Duplicata dentro do próprio arquivo
                         if tomb in vistos_no_arquivo:
                             raise ValueError(f"Tombamento duplicado no arquivo: {tomb}")
                         vistos_no_arquivo.add(tomb)
 
-                        # update_or_create por tombamento
+                        # cria/atualiza Bem
                         defaults = data.copy()
                         defaults.pop("tombamento", None)
-
                         with transaction.atomic():
                             obj, created = Bem.objects.update_or_create(
                                 tombamento=tomb,
@@ -200,14 +260,22 @@ class BemAdmin(admin.ModelAdmin):
                         else:
                             atualizados += 1
 
+                        # acumula sala desejada (nome, bloco)
+                        sala_txt = _norm_str(data.get("sala"))
+                        nome_sala, bloco = _split_sala_bloco(sala_txt)
+                        if nome_sala:
+                            desired_salas.add((nome_sala, bloco))
+
                     except Exception as e:
                         erros += 1
                         if len(erros_msgs) < 10:
                             erros_msgs.append(f"Linha {linha_num}: {str(e)}")
 
+                # Reconstruir Salas com base no desejado
+                _rebuild_salas_from_pairs(desired_salas)
+
                 # Mensagens finais
-                if criados or atualizados:
-                    messages.success(request, f"Importação concluída: {criados} criado(s), {atualizados} atualizado(s).")
+                messages.success(request, f"Importação concluída: {criados} criado(s), {atualizados} atualizado(s).")
                 if erros:
                     msg = f"{erros} linha(s) com erro."
                     if erros_msgs:

@@ -1,5 +1,18 @@
 from django.db import models
 
+class Sala(models.Model):
+    nome = models.CharField("Sala", max_length=255)
+    bloco = models.CharField("Bloco", max_length=64, blank=True, null=True)
+
+    class Meta:
+        verbose_name = "Sala"
+        verbose_name_plural = "Salas"
+        unique_together = (("nome", "bloco"),)
+        ordering = ["nome"]
+
+    def __str__(self):
+        return f"{self.nome} — {self.bloco}" if self.bloco else self.nome
+
 class Bem(models.Model):
     # Mapeamento 1:1 com o cabeçalho do CSV do SUAP
     tombamento = models.CharField("NUMERO", max_length=50, unique=True, db_index=True)  # NUMERO
@@ -19,7 +32,7 @@ class Bem(models.Model):
     data_entrada = models.DateField("DATA DA ENTRADA", blank=True, null=True)  # DATA DA ENTRADA
     data_carga = models.DateField("DATA DA CARGA", blank=True, null=True)  # DATA DA CARGA
     fornecedor = models.CharField("FORNECEDOR", max_length=255, blank=True, null=True)  # FORNECEDOR
-    sala = models.CharField("SALA", max_length=255, blank=True, null=True, db_index=True)  # SALA
+    sala = models.CharField("SALA", max_length=255, blank=True, null=True, db_index=True)  # SALA (texto do SUAP)
     estado_conservacao = models.CharField("ESTADO DE CONSERVAÇÃO", max_length=32, blank=True, null=True)  # ESTADO DE CONSERVAÇÃO
 
     # Meta e trilhas
