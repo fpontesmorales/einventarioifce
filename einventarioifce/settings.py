@@ -20,7 +20,7 @@ INSTALLED_APPS = [
     "django.contrib.messages",
     "django.contrib.staticfiles",
 
-    # Apps do projeto (já criados)
+    # Apps do projeto
     "core",
     "patrimonio",
     "importacao",
@@ -97,7 +97,7 @@ JAZZMIN_SETTINGS = {
     "copyright": "IFCE Campus Caucaia",
 }
 JAZZMIN_UI_TWEAKS = {
-    "theme": "light",
+    "theme": "cerulean",  # tema válido do Jazzmin (evita o aviso "light not found")
 }
 
 # --- Senhas / Auth ---
