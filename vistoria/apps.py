@@ -1,6 +1,6 @@
 from django.apps import AppConfig
 
-
 class VistoriaConfig(AppConfig):
-    default_auto_field = 'django.db.models.BigAutoField'
-    name = 'vistoria'
+    default_auto_field = "django.db.models.BigAutoField"
+    name = "vistoria"
+    verbose_name = "Vistoria"

@@ -1,0 +1,41 @@
+{% extends "vistoria/base_vistoria.html" %}
+{% block title %}Salas — {{ bloco }}{% endblock %}
+
+{% block content %}
+  <div class="row" style="justify-content:space-between; gap:8px; margin-bottom:8px;">
+    <div><strong>Bloco:</strong> {{ bloco }}</div>
+    <a class="btn" href="{% url 'vistoria_public:blocos' %}">← Voltar aos blocos</a>
+  </div>
+
+  <div class="grid">
+    {% for it in items %}
+      <div class="card">
+        <div class="row" style="justify-content:space-between;">
+          <div><strong>{{ it.sala.nome }}</strong></div>
+          <a class="btn" href="{% url 'vistoria_public:sala_workspace' sala_id=it.sala.id %}">Entrar</a>
+        </div>
+
+        <div class="row" style="margin-top:10px; justify-content:space-between;">
+          <div><span class="stat">{{ it.total }}</span> elegíveis</div>
+          <div class="muted">{{ it.vistoriados }} vistoriados</div>
+        </div>
+
+        <div class="progress" style="margin:8px 0;">
+          {% with pct=0 %}
+            {% if it.total > 0 %}
+              {% widthratio it.vistoriados it.total 100 as pct %}
+            {% endif %}
+            <div class="bar" style="width: {{ pct }}%;"></div>
+          {% endwith %}
+        </div>
+
+        <div class="row wrap muted">
+          <span class="badge">Pendentes: {{ it.pendentes }}</span>
+          <span class="badge">Movidos (para fora): {{ it.movidos_fora }}</span>
+          <span class="badge">Recebidos (de outra): {{ it.movidos_recebidos }}</span>
+          <span class="badge">Sem registro: {{ it.sem_registro }}</span>
+        </div>
+      </div>
+    {% endfor %}
+  </div>
+{% endblock %}

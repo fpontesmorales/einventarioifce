@@ -5,6 +5,7 @@ from django import forms
 from django.db import transaction
 from django.shortcuts import redirect
 from decimal import Decimal, InvalidOperation
+from collections import Counter
 import csv, io, re, datetime
 
 from .models import Bem, Sala
@@ -67,9 +68,10 @@ def _parse_decimal(v):
 # --------- Admin de Sala ----------
 @admin.register(Sala)
 class SalaAdmin(admin.ModelAdmin):
-    list_display = ("nome", "bloco", "setores", "total_bens")
+    list_display = ("nome", "bloco", "setores", "bens_count")
     list_filter = ("bloco",)
     search_fields = ("nome", "bloco")
+    ordering = ("-bens_count", "nome")  # << desc por padrão
 
     def setores(self, obj):
         """
@@ -82,18 +84,8 @@ class SalaAdmin(admin.ModelAdmin):
                 setor = _norm_str(s[1])
                 if setor:
                     setores.add(setor)
-        # ordena e junta numa string
         return ", ".join(sorted(setores)) if setores else "-"
     setores.short_description = "Setores"
-
-    def total_bens(self, obj):
-        count = 0
-        for sala_txt in Bem.objects.filter(sala__isnull=False).values_list("sala", flat=True):
-            nome, bloco = _split_sala_bloco(sala_txt)
-            if nome == obj.nome and (bloco or None) == (obj.bloco or None):
-                count += 1
-        return count
-    total_bens.short_description = "Bens"
 
 # --------- Form de upload ----------
 class UploadCSVForm(forms.Form):
@@ -133,6 +125,7 @@ def _rebuild_salas_from_pairs(desired_pairs):
     Reconstrói Salas com base no conjunto de pares (nome, bloco).
     - Cria novas que faltam.
     - Remove as que não estiverem mais presentes.
+    (o bens_count será atualizado depois)
     """
     desired = set()
     for nome, bloco in desired_pairs:
@@ -217,8 +210,9 @@ class BemAdmin(admin.ModelAdmin):
                 vistos_no_arquivo = set()
                 linha_num = 1
 
-                # pares (nome, bloco) desejados
+                # pares (nome, bloco) desejados + contagem
                 desired_salas = set()
+                desired_counts = Counter()
 
                 for row in reader:
                     linha_num += 1
@@ -251,7 +245,7 @@ class BemAdmin(admin.ModelAdmin):
                         defaults = data.copy()
                         defaults.pop("tombamento", None)
                         with transaction.atomic():
-                            obj, created = Bem.objects.update_or_create(
+                            _, created = Bem.objects.update_or_create(
                                 tombamento=tomb,
                                 defaults=defaults,
                             )
@@ -260,11 +254,12 @@ class BemAdmin(admin.ModelAdmin):
                         else:
                             atualizados += 1
 
-                        # acumula sala desejada (nome, bloco)
+                        # acumula sala desejada (nome, bloco) e contagem
                         sala_txt = _norm_str(data.get("sala"))
                         nome_sala, bloco = _split_sala_bloco(sala_txt)
                         if nome_sala:
                             desired_salas.add((nome_sala, bloco))
+                            desired_counts[(nome_sala, bloco)] += 1
 
                     except Exception as e:
                         erros += 1
@@ -273,6 +268,19 @@ class BemAdmin(admin.ModelAdmin):
 
                 # Reconstruir Salas com base no desejado
                 _rebuild_salas_from_pairs(desired_salas)
+
+                # Atualizar bens_count em lote
+                to_update = []
+                for (nome, bloco), cnt in desired_counts.items():
+                    try:
+                        s = Sala.objects.get(nome=nome, bloco=bloco)
+                        if s.bens_count != cnt:
+                            s.bens_count = cnt
+                            to_update.append(s)
+                    except Sala.DoesNotExist:
+                        pass
+                if to_update:
+                    Sala.objects.bulk_update(to_update, ["bens_count"])
 
                 # Mensagens finais
                 messages.success(request, f"Importação concluída: {criados} criado(s), {atualizados} atualizado(s).")

@@ -1,0 +1,55 @@
+{% extends "vistoria/base_vistoria.html" %}
+{% block title %}+ Sem registro — {{ sala.nome }}{% endblock %}
+
+{% block content %}
+  <div class="card">
+    <div class="row" style="justify-content:space-between;">
+      <div>
+        <strong>+ Sem registro</strong>
+        <div class="muted">{{ sala.nome }}{% if sala.bloco %} — {{ sala.bloco }}{% endif %}</div>
+      </div>
+      <a class="btn" href="{% url 'vistoria_public:sala_workspace' sala_id=sala.id %}">← Voltar</a>
+    </div>
+  </div>
+
+  <form id="form-extra" method="post" enctype="multipart/form-data" class="grid">
+    {% csrf_token %}
+    <div class="card">
+      <div class="group-title">Foto</div>
+      <input type="file" name="foto" accept="image/*" required />
+    </div>
+
+    <div class="card">
+      <div class="group-title">Dados observados</div>
+      <textarea name="descricao_obs" placeholder="Descrição observada" required></textarea>
+      <input type="text" name="numero_serie_obs" placeholder="Número de série (opcional)" />
+      <input type="text" name="estado_obs" placeholder="Estado (opcional)" />
+      <input type="text" name="responsavel_obs" placeholder="Responsável/usuário (opcional)" />
+
+      <label class="row" style="gap:8px;">
+        <input type="checkbox" name="etiqueta_possui" /> Possui etiqueta?
+      </label>
+      <select name="etiqueta_condicao" id="sel-etiqueta-cond">
+        <option value="">— Condição —</option>
+        {% for key,val in etiqueta_choices %}
+          <option value="{{ key }}">{{ val }}</option>
+        {% endfor %}
+      </select>
+
+      <textarea name="observacoes" placeholder="Observações (opcional)"></textarea>
+    </div>
+
+    <button class="btn primary" type="submit">Salvar item sem registro</button>
+  </form>
+
+  <script>
+    (function(){
+      const f = document.getElementById('form-extra');
+      const cb = f.querySelector('input[name="etiqueta_possui"]');
+      const sel = f.querySelector('#sel-etiqueta-cond');
+      function sync(){ sel.disabled = !cb.checked; if (!cb.checked) sel.selectedIndex = 0; }
+      sync();
+      cb.addEventListener('change', sync);
+    })();
+  </script>
+{% endblock %}

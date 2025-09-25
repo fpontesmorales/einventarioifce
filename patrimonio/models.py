@@ -3,12 +3,13 @@ from django.db import models
 class Sala(models.Model):
     nome = models.CharField("Sala", max_length=255)
     bloco = models.CharField("Bloco", max_length=64, blank=True, null=True)
+    bens_count = models.IntegerField("Bens", default=0)  # << novo: usado para ordenar
 
     class Meta:
         verbose_name = "Sala"
         verbose_name_plural = "Salas"
         unique_together = (("nome", "bloco"),)
-        ordering = ["nome"]
+        ordering = ["-bens_count", "nome"]  # << padrão: mais itens primeiro
 
     def __str__(self):
         return f"{self.nome} — {self.bloco}" if self.bloco else self.nome

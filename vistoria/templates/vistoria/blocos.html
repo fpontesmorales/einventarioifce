@@ -1,0 +1,52 @@
+{% extends "vistoria/base_vistoria.html" %}
+{% block title %}Blocos - Vistoria{% endblock %}
+
+{% block content %}
+  <form method="get" class="grid" style="margin-bottom:12px;">
+    <input type="search" name="q" value="{{ q }}" placeholder="Pesquisar sala..." />
+    {% if salas_encontradas %}
+      <div class="card">
+        <div class="muted" style="margin-bottom:8px;">Salas encontradas</div>
+        <div class="grid">
+          {% for s in salas_encontradas %}
+            <a class="btn" href="{% url 'vistoria_public:sala_workspace' sala_id=s.id %}">
+              {{ s.nome }}{% if s.bloco %} — {{ s.bloco }}{% endif %}
+            </a>
+          {% endfor %}
+        </div>
+      </div>
+    {% endif %}
+  </form>
+
+  <div class="grid cards">
+    {% for c in cards %}
+      <div class="card">
+        <div class="row" style="justify-content:space-between;">
+          <div><strong>{{ c.bloco }}</strong></div>
+          <a class="btn" href="{% url 'vistoria_public:salas_por_bloco' bloco=c.bloco %}">Entrar</a>
+        </div>
+
+        <div class="row" style="margin-top:10px; justify-content:space-between;">
+          <div><span class="stat">{{ c.total }}</span> elegíveis</div>
+          <div class="muted">{{ c.vistoriados }} vistoriados</div>
+        </div>
+
+        <div class="progress" style="margin:8px 0;">
+          {% with pct=0 %}
+            {% if c.total > 0 %}
+              {% widthratio c.vistoriados c.total 100 as pct %}
+            {% endif %}
+            <div class="bar" style="width: {{ pct }}%;"></div>
+          {% endwith %}
+        </div>
+
+        <div class="row wrap muted">
+          <span class="badge">Pendentes: {{ c.pendentes }}</span>
+          <span class="badge">Não encontrados: {{ c.nao_encontrados }}</span>
+          <span class="badge">Movidos: {{ c.movidos }}</span>
+          <span class="badge">Sem registro: {{ c.sem_registro }}</span>
+        </div>
+      </div>
+    {% endfor %}
+  </div>
+{% endblock %}
