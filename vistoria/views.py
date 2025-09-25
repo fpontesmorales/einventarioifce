@@ -1,11 +1,12 @@
 from collections import defaultdict
 from urllib.parse import unquote
+import csv
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import Group
 from django.db import transaction
-from django.http import Http404, HttpResponseBadRequest
+from django.http import Http404, HttpResponse, HttpResponseBadRequest
 from django.shortcuts import get_object_or_404, redirect, render
 
 from patrimonio.models import Bem, Sala
@@ -274,7 +275,6 @@ def vistoria_bem_form(request, sala_id: int, tombamento: str):
         messages.error(request, "Este bem não faz parte do escopo da campanha (baixado ou livro fora do escopo).")
         return redirect("vistoria_public:sala_workspace", sala_id=sala.id)
 
-    # opções de salas
     salas = list(Sala.objects.all().order_by("nome"))
     v = VistoriaBem.objects.filter(inventario=inv, bem=bem).first()
 
@@ -375,7 +375,6 @@ def vistoria_bem_form(request, sala_id: int, tombamento: str):
     suap_nome, suap_bloco = split_sala_bloco(bem.sala or "")
     suap_serie = getattr(bem, "numero_serie", None) or getattr(bem, "serie", None) or ""
     suap_estado = getattr(bem, "estado", None) or getattr(bem, "estado_conservacao", None) or ""
-    # >>> Responsável: prioriza o campo do CSV "Carga Atual"
     suap_resp = (
         getattr(bem, "carga_atual", None)
         or getattr(bem, "responsavel", None)
@@ -395,7 +394,6 @@ def vistoria_bem_form(request, sala_id: int, tombamento: str):
         "salas": salas,
         "vistoria": v,
         "sala_default_id": sala.id,
-        # opções da condição da etiqueta (sempre disponíveis, com ou sem vistoria existente)
         "etiqueta_choices": VistoriaBem.EtiquetaCondicao.choices,
     }
     return render(request, "vistoria/vistoria_bem_form.html", ctx)
@@ -475,6 +473,167 @@ def vistoria_extra_form(request, sala_id: int):
     ctx = {
         "inventario": inv,
         "sala": sala,
-        "etiqueta_choices": VistoriaBem.EtiquetaCondicao.choices,  # <- opções para o select
+        "etiqueta_choices": VistoriaBem.EtiquetaCondicao.choices,
     }
     return render(request, "vistoria/vistoria_extra_form.html", ctx)
+
+
+# ======================== RELATÓRIOS (CSV) ========================
+@vistoriador_required
+def relatorio_resumo_csv(request):
+    inv = _require_inventario_ativo()
+    bloco_f = (request.GET.get("bloco") or "").strip() or None
+
+    elegiveis = list(inv.bens_elegiveis_qs().only("id", "sala", "descricao"))
+    sala_map = _sala_lookup_by_key()
+
+    stats = {}  # key: (nome, bloco)
+    for b in elegiveis:
+        nome, bloco = split_sala_bloco(b.sala or "")
+        key = ((nome or "SEM SALA"), (bloco or "SEM BLOCO"))
+        st = stats.setdefault(key, {"total": 0, "vistoriados": 0, "ok": 0, "div": 0, "naoencontrado": 0, "mov_fora": 0, "mov_receb": 0, "extra": 0})
+        st["total"] += 1
+
+    ids_elegiveis = [b.id for b in elegiveis]
+    v_qs = (VistoriaBem.objects.select_related("bem")
+            .filter(inventario=inv, bem_id__in=ids_elegiveis))
+
+    for v in v_qs:
+        suap_nome, suap_bloco = split_sala_bloco(v.bem.sala or "")
+        src_key = ((suap_nome or "SEM SALA"), (suap_bloco or "SEM BLOCO"))
+        st = stats.setdefault(src_key, {"total": 0, "vistoriados": 0, "ok": 0, "div": 0, "naoencontrado": 0, "mov_fora": 0, "mov_receb": 0, "extra": 0})
+        st["vistoriados"] += 1
+
+        if v.status == VistoriaBem.Status.NAO_ENCONTRADO:
+            st["naoencontrado"] += 1
+        else:
+            if v.encontrado_em_outra_sala():
+                st["mov_fora"] += 1
+                obs_key = ((v.sala_obs_nome or "SEM SALA"), (v.sala_obs_bloco or "SEM BLOCO"))
+                stats.setdefault(obs_key, {"total": 0, "vistoriados": 0, "ok": 0, "div": 0, "naoencontrado": 0, "mov_fora": 0, "mov_receb": 0, "extra": 0})
+                stats[obs_key]["mov_receb"] += 1
+            else:
+                if v.divergente:
+                    st["div"] += 1
+                else:
+                    st["ok"] += 1
+
+    for x in VistoriaExtra.objects.filter(inventario=inv):
+        obs_key = ((x.sala_obs_nome or "SEM SALA"), (x.sala_obs_bloco or "SEM BLOCO"))
+        stats.setdefault(obs_key, {"total": 0, "vistoriados": 0, "ok": 0, "div": 0, "naoencontrado": 0, "mov_fora": 0, "mov_receb": 0, "extra": 0})
+        stats[obs_key]["extra"] += 1
+
+    # Filtro por bloco, se informado
+    items = []
+    for (nome, bloco), st in stats.items():
+        if bloco_f and bloco != bloco_f:
+            continue
+        total = st["total"]
+        vist = st["vistoriados"]
+        pend = max(0, total - vist)
+        pct = int((vist * 100) / total) if total else 0
+        items.append([bloco, nome, total, vist, st["ok"], st["div"], st["naoencontrado"], st["mov_fora"], st["mov_receb"], st["extra"], pend, pct])
+
+    # Ordena por total desc
+    items.sort(key=lambda r: r[2], reverse=True)
+
+    # CSV (delimitador ; e BOM para Excel pt-BR)
+    resp = HttpResponse(content_type="text/csv; charset=utf-8")
+    resp["Content-Disposition"] = 'attachment; filename="resumo_salas.csv"'
+    resp.write("\ufeff")
+    w = csv.writer(resp, delimiter=";")
+    w.writerow(["Bloco", "Sala", "Total elegíveis", "Vistoriados", "OK", "Divergentes", "Não encontrados", "Movidos (saíram)", "Movidos (recebidos)", "Sem registro", "Pendentes", "% Vistoriado"])
+    for row in items:
+        w.writerow(row)
+    return resp
+
+
+@vistoriador_required
+def relatorio_detalhes_csv(request):
+    inv = _require_inventario_ativo()
+    sala_id = request.GET.get("sala_id")
+    bloco_f = (request.GET.get("bloco") or "").strip() or None
+
+    # CSV
+    resp = HttpResponse(content_type="text/csv; charset=utf-8")
+    resp["Content-Disposition"] = 'attachment; filename="detalhes_vistorias.csv"'
+    resp.write("\ufeff")
+    w = csv.writer(resp, delimiter=";")
+
+    w.writerow([
+        "Tipo", "Tombamento", "Descrição SUAP", "Sala SUAP", "Bloco SUAP",
+        "Status", "Encontrado em outra sala?", "Sala observada", "Bloco observado",
+        "Divergente?", "Divergências", "Etiqueta possui?", "Condição etiqueta",
+        "Avaria", "Observações", "Responsável SUAP", "Responsável observado"
+    ])
+
+    # Vistorias de bens
+    v_qs = VistoriaBem.objects.select_related("bem").filter(inventario=inv)
+    if sala_id:
+        sala = get_object_or_404(Sala, id=int(sala_id))
+        # filtra pelo SUAP (sala original)
+        v_qs = [v for v in v_qs if split_sala_bloco(v.bem.sala or "") == (sala.nome, sala.bloco)]
+    elif bloco_f:
+        v_qs = [v for v in v_qs if (split_sala_bloco(v.bem.sala or "")[1] or "SEM BLOCO") == bloco_f]
+
+    for v in v_qs:
+        b = v.bem
+        suap_nome, suap_bloco = split_sala_bloco(b.sala or "")
+        diverg_fields = []
+        if v.status == VistoriaBem.Status.ENCONTRADO:
+            if not v.confere_descricao: diverg_fields.append("Descrição")
+            if not v.confere_numero_serie: diverg_fields.append("Nº de série")
+            if not v.confere_local: diverg_fields.append("Local")
+            if not v.confere_estado: diverg_fields.append("Estado")
+            if not v.confere_responsavel: diverg_fields.append("Responsável")
+
+        w.writerow([
+            "BEM",
+            b.tombamento,
+            (b.descricao or "").strip(),
+            suap_nome or "",
+            suap_bloco or "",
+            ("ENCONTRADO" if v.status == VistoriaBem.Status.ENCONTRADO else "NÃO ENCONTRADO"),
+            ("SIM" if v.encontrado_em_outra_sala() else "NÃO"),
+            (v.sala_obs_nome or ""),
+            (v.sala_obs_bloco or ""),
+            ("SIM" if getattr(v, "divergente", False) else "NÃO"),
+            ", ".join(diverg_fields),
+            ("SIM" if v.etiqueta_possui else "NÃO"),
+            (v.etiqueta_condicao or ""),
+            (v.avaria_texto or ""),
+            (v.observacoes or ""),
+            (getattr(b, "carga_atual", None) or getattr(b, "responsavel", None) or getattr(b, "carga_responsavel", None) or ""),
+            (v.responsavel_obs or ""),
+        ])
+
+    # Extras
+    x_qs = VistoriaExtra.objects.filter(inventario=inv)
+    if sala_id:
+        sala = get_object_or_404(Sala, id=int(sala_id))
+        x_qs = x_qs.filter(sala_obs_nome=sala.nome, sala_obs_bloco=sala.bloco)
+    elif bloco_f:
+        x_qs = [x for x in x_qs if (x.sala_obs_bloco or "SEM BLOCO") == bloco_f]
+
+    for x in x_qs:
+        w.writerow([
+            "EXTRA",
+            "SEM TOMBO",
+            (x.descricao_obs or "").strip(),
+            (x.sala_obs_nome or ""),
+            (x.sala_obs_bloco or ""),
+            "EXTRA",
+            "",
+            "",
+            "",
+            "",
+            "",
+            ("SIM" if x.etiqueta_possui else "NÃO"),
+            (x.etiqueta_condicao or ""),
+            "",
+            (x.observacoes or ""),
+            "",
+            (x.responsavel_obs or ""),
+        ])
+
+    return resp

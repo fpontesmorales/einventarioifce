@@ -28,6 +28,7 @@
     </div>
   {% endif %}
 
+  <!-- FORM PRINCIPAL: SALVAR (ENCONTRADO) -->
   <form id="form-vistoria" method="post" enctype="multipart/form-data" class="grid">
     {% csrf_token %}
     <input type="hidden" name="acao" value="salvar_encontrado" />
@@ -35,7 +36,9 @@
 
     <div class="card">
       <div class="group-title">Foto do bem</div>
-      <input type="file" name="foto" accept="image/*" {% if not vistoria or not vistoria.foto_marcadagua %}required{% endif %} />
+      <!-- Força câmera no mobile (quando suportado) -->
+      <input type="file" name="foto" accept="image/*" capture="environment" {% if not vistoria or not vistoria.foto_marcadagua %}required{% endif %} />
+      <div class="muted" style="margin-top:6px;">Dica: vire o celular para horizontal para uma foto mais ampla.</div>
     </div>
 
     <div class="card">
@@ -55,7 +58,7 @@
         <input type="text" name="numero_serie_obs" value="{% if vistoria and not vistoria.confere_numero_serie %}{{ vistoria.numero_serie_obs }}{% endif %}" placeholder="Série observada (se divergente)" />
       </div>
 
-      <label class="row" style="gap:8px; margin-top:10px;">
+      <label class="row" style="gap:8px; margin-top:10px%;">
         <input id="cb-local" type="checkbox" name="confere_local" {% if not vistoria or vistoria.confere_local %}checked{% endif %}/> Local (sala/bloco) confere?
       </label>
       <div id="grp-local" style="display:none; margin-top:6px;">
@@ -105,19 +108,23 @@
 
     <div class="row" style="gap:8px;">
       <button class="btn primary" type="submit">Salvar (Encontrado)</button>
-
-      <form method="post" action="{% url 'vistoria_public:nao_encontrado' sala_id=sala.id tombamento=bem.tombamento %}">
-        {% csrf_token %}
-        <button class="btn" type="submit">Marcar Não encontrado</button>
-      </form>
-
-      {% if vistoria %}
-        <button class="btn" name="acao" value="excluir" formaction="" formmethod="post" onclick="return confirm('Excluir vistoria?');">
-          {% csrf_token %} Excluir
-        </button>
-      {% endif %}
     </div>
   </form>
+
+  <!-- FORM SEPARADO: NÃO ENCONTRADO (não sofre validação do input file) -->
+  <form method="post" action="{% url 'vistoria_public:nao_encontrado' sala_id=sala.id tombamento=bem.tombamento %}" style="margin-top:8px;">
+    {% csrf_token %}
+    <button class="btn" type="submit" formnovalidate>Marcar Não encontrado</button>
+  </form>
+
+  <!-- FORM SEPARADO: EXCLUIR VISTORIA (também sem validar o file) -->
+  {% if vistoria %}
+    <form method="post" action="" style="margin-top:8px;" onsubmit="return confirm('Excluir vistoria?');">
+      {% csrf_token %}
+      <input type="hidden" name="acao" value="excluir">
+      <button class="btn" type="submit" formnovalidate>Excluir</button>
+    </form>
+  {% endif %}
 
   <script>
     (function(){

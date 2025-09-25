@@ -16,7 +16,8 @@
     {% csrf_token %}
     <div class="card">
       <div class="group-title">Foto</div>
-      <input type="file" name="foto" accept="image/*" required />
+      <!-- Força câmera no mobile (quando suportado) -->
+      <input type="file" name="foto" accept="image/*" capture="environment" required />
     </div>
 
     <div class="card">
