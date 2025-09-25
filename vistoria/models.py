@@ -1,283 +1,222 @@
-from django.conf import settings
 from django.db import models
 from django.db.models import Q
-from datetime import datetime
-import uuid
+from django.contrib.auth import get_user_model
 
-# --- Utilitário compartilhado (regra SALA → nome/bloco) ---
-def split_sala_bloco(sala_str: str):
+User = get_user_model()
+
+# --- Compat: funções usadas por migrações antigas ---
+def upload_foto_bem(instance, filename):
+    safe = str(filename).replace(" ", "_")
+    return f"vistorias/{safe}"
+
+def upload_foto_extra(instance, filename):
+    safe = str(filename).replace(" ", "_")
+    return f"vistorias/{safe}"
+# -----------------------------------------------------
+
+
+def split_sala_bloco(s: str | None):
     """
-    Extrai o BLOCO como o *último* conteúdo entre parênteses no fim do texto da SALA.
-    Ex.: "LAB METRO (LAB MÚSICA)(BLOCO ADMINISTRATIVO 01)"
-         -> nome: "LAB METRO (LAB MÚSICA)"
-         -> bloco: "BLOCO ADMINISTRATIVO 01"
+    Entrada: "NOME DA SALA (ALGO OPCIONAL)(BLOCO X)" -> ("NOME DA SALA (ALGO OPCIONAL)", "BLOCO X")
+    Se não tiver bloco no sufixo, retorna (nome, None).
     """
-    if not sala_str:
-        return None, None
-    s0 = str(sala_str).strip()
-    if s0.endswith(")") and "(" in s0:
-        i = s0.rfind("(")
-        j = s0.rfind(")")
-        if 0 <= i < j:
-            bloco = s0[i + 1 : j].strip() or None
-            nome = (s0[:i].strip() or s0)
-            return nome, bloco
-    return s0, None
+    if not s:
+        return (None, None)
+    s = s.strip()
+    if not s:
+        return (None, None)
+    if s.endswith(")") and "(" in s:
+        try:
+            ini = s.rindex("(")
+            nome = s[:ini].strip()
+            bloco = s[ini + 1 : -1].strip() or None
+            return (nome or None, bloco)
+        except ValueError:
+            return (s, None)
+    return (s, None)
 
 
-def upload_foto_bem(instance, filename: str):
-    # Guarda apenas a foto COM marca d'água (original não é salvo)
-    ext = filename.split(".")[-1].lower() if "." in filename else "jpg"
-    ano = instance.inventario.ano if instance.inventario_id else datetime.now().year
-    tomb = instance.bem.tombamento if instance.bem_id else "sem_tombo"
-    ts = datetime.now().strftime("%Y%m%d-%H%M%S")
-    fname = f"{ts}_{uuid.uuid4().hex[:8]}.{ext}"
-    return f"inventarios/{ano}/bens/{tomb}/{fname}"
-
-
-def upload_foto_extra(instance, filename: str):
-    ext = filename.split(".")[-1].lower() if "." in filename else "jpg"
-    ano = instance.inventario.ano if instance.inventario_id else datetime.now().year
-    ts = datetime.now().strftime("%Y%m%d-%H%M%S")
-    fname = f"{ts}_{uuid.uuid4().hex[:8]}.{ext}"
-    return f"inventarios/{ano}/extras/{fname}"
-
-
-# ------------ Inventário (1 ativo por vez) ------------
 class Inventario(models.Model):
-    ano = models.PositiveIntegerField("Ano", unique=True)
-    ativo = models.BooleanField("Ativo", default=False)
-    incluir_livros = models.BooleanField(
-        "Incluir LIVROS (ED = 4490.52.18) no inventário?",
-        default=False,
-        help_text="Quando desmarcado, livros ficam fora do escopo da campanha."
-    )
-    data_inicio = models.DateField("Início", blank=True, null=True)
-    data_fim = models.DateField("Fim", blank=True, null=True)
+    ano = models.IntegerField()
+    ativo = models.BooleanField(default=False)
+    incluir_livros = models.BooleanField(default=True)
 
-    criado_por = models.ForeignKey(
-        settings.AUTH_USER_MODEL,
-        verbose_name="Criado por",
-        on_delete=models.SET_NULL,
-        blank=True,
-        null=True,
-        related_name="inventarios_criados",
-    )
-    criado_em = models.DateTimeField("Criado em", auto_now_add=True)
-    atualizado_em = models.DateTimeField("Atualizado em", auto_now=True)
+    criado_em = models.DateTimeField(auto_now_add=True)
+    atualizado_em = models.DateTimeField(auto_now=True)
 
     class Meta:
-        verbose_name = "Inventário"
-        verbose_name_plural = "Inventários"
-        constraints = [
-            # Permite no máximo UMA linha com ativo=True
-            models.UniqueConstraint(
-                fields=["ativo"],
-                condition=Q(ativo=True),
-                name="unico_inventario_ativo",
-            ),
-        ]
         ordering = ["-ano"]
 
     def __str__(self):
         return f"Inventário {self.ano} ({'Ativo' if self.ativo else 'Inativo'})"
 
-    # --------- Escopo: quem entra na campanha ---------
+    # ====== MÉTODOS QUE AS VIEWS USAM ======
     def bens_elegiveis_qs(self):
         """
-        Retorna queryset de Bens elegíveis:
-        - exclui STATUS 'baixado' (case-insensitive)
-        - exclui LIVROS (ED = 4490.52.18) quando incluir_livros=False
+        Bens no escopo do inventário:
+        - exclui BAIXADOS (usa o(s) campo(s) existentes no modelo)
+        - exclui livros (ED == '4490.52.18') quando incluir_livros=False
         """
-        from patrimonio.models import Bem  # import local p/ evitar ciclos
+        from patrimonio.models import Bem  # evitar import circular
+
         qs = Bem.objects.all()
-        qs = qs.exclude(status__iexact="baixado")
+        field_names = {f.name for f in Bem._meta.get_fields() if hasattr(f, "attname")}
+
+        # Excluir baixados
+        if "baixado" in field_names:
+            qs = qs.filter(baixado=False)
+        else:
+            cond = Q()
+            if "situacao" in field_names:
+                cond |= Q(situacao__iexact="BAIXADO")
+            if "status" in field_names:
+                cond |= Q(status__iexact="BAIXADO")
+            if cond:
+                qs = qs.exclude(cond)
+
+        # Excluir livros se necessário
         if not self.incluir_livros:
-            qs = qs.exclude(ed__iexact="4490.52.18")
+            if "ed" in field_names:
+                qs = qs.exclude(ed__iexact="4490.52.18")
+            elif "elemento_despesa" in field_names:
+                qs = qs.exclude(elemento_despesa__iexact="4490.52.18")
+
         return qs
 
     def bem_e_elegivel(self, bem) -> bool:
-        """Checagem rápida para um único Bem (sem consultar o banco de novo)."""
-        status = (bem.status or "").strip().lower()
-        if status == "baixado":
+        """Validação por objeto."""
+        baixado = getattr(bem, "baixado", None)
+        if baixado is True:
             return False
-        ed = (bem.ed or "").strip()
-        if not self.incluir_livros and ed.lower() == "4490.52.18".lower():
+        situacao = (getattr(bem, "situacao", "") or getattr(bem, "status", "") or "").strip().upper()
+        if situacao == "BAIXADO":
             return False
+
+        if not self.incluir_livros:
+            ed = (getattr(bem, "ed", "") or getattr(bem, "elemento_despesa", "") or "").strip()
+            if ed == "4490.52.18":
+                return False
         return True
 
 
-# ------------ Vistoria de Bem (vinculado ao SUAP) ------------
 class VistoriaBem(models.Model):
     class Status(models.TextChoices):
         ENCONTRADO = "ENCONTRADO", "Encontrado"
         NAO_ENCONTRADO = "NAO_ENCONTRADO", "Não encontrado"
 
+    inventario = models.ForeignKey(Inventario, on_delete=models.CASCADE)
+    bem = models.ForeignKey("patrimonio.Bem", on_delete=models.CASCADE)
+
+    status = models.CharField(max_length=20, choices=Status.choices, default=Status.ENCONTRADO)
+
+    # conferências
+    confere_descricao = models.BooleanField(default=True)
+    confere_numero_serie = models.BooleanField(default=True)
+    confere_local = models.BooleanField(default=True)
+    confere_estado = models.BooleanField(default=True)
+    confere_responsavel = models.BooleanField(default=True)
+
+    # observados quando NÃO confere
+    descricao_obs = models.TextField(null=True, blank=True)
+    numero_serie_obs = models.CharField(max_length=200, null=True, blank=True)
+    sala_obs_nome = models.CharField(max_length=255, null=True, blank=True)
+    sala_obs_bloco = models.CharField(max_length=255, null=True, blank=True)
+    estado_obs = models.CharField(max_length=200, null=True, blank=True)
+    responsavel_obs = models.CharField(max_length=200, null=True, blank=True)
+
+    # etiqueta
     class EtiquetaCondicao(models.TextChoices):
         BOA = "BOA", "Boa"
-        RASURADA = "RASURADA", "Rasurada"
-        DESCOLANDO = "DESCOLANDO", "Descolando"
-        FORA_PADRAO = "FORA_PADRAO", "Fora do padrão"
-        DIFICIL_VISUALIZACAO = "DIFICIL_VISUALIZACAO", "Difícil visualização"
+        DANIFICADA = "DANIFICADA", "Danificada"
+        ILEGIVEL = "ILEGIVEL", "Ilegível"
 
-    inventario = models.ForeignKey(
-        "vistoria.Inventario",
-        verbose_name="Inventário",
-        on_delete=models.CASCADE,
-        related_name="vistorias_bens",
-    )
-    bem = models.ForeignKey(
-        "patrimonio.Bem",
-        verbose_name="Bem (SUAP)",
-        on_delete=models.CASCADE,
-        related_name="vistorias",
-    )
+    etiqueta_possui = models.BooleanField(default=True)
+    etiqueta_condicao = models.CharField(max_length=20, choices=EtiquetaCondicao.choices, null=True, blank=True)
 
-    # Foto com marca d'água (apenas a versão marcada é salva)
-    foto_marcadagua = models.FileField("Foto do bem (marcada)", upload_to=upload_foto_bem, blank=True, null=True)
+    avaria_texto = models.TextField(null=True, blank=True)
+    observacoes = models.TextField(null=True, blank=True)
 
-    # Resultado principal
-    status = models.CharField("Resultado", max_length=20, choices=Status.choices, default=Status.ENCONTRADO)
+    foto_marcadagua = models.ImageField(upload_to="vistorias/", null=True, blank=True)
 
-    # Percepção do vistoriador sobre conferências (pré-preenchido como True)
-    confere_descricao = models.BooleanField("Descrição confere com SUAP?", default=True)
-    confere_numero_serie = models.BooleanField("Número de série confere com SUAP?", default=True)
-    confere_local = models.BooleanField("Local confere com SUAP?", default=True)
-    confere_estado = models.BooleanField("Estado de conservação confere com SUAP?", default=True)
-    confere_responsavel = models.BooleanField("Responsável/carga confere com SUAP?", default=True)
+    # Campo persistido no banco (NOT NULL em migração antiga)
+    divergente = models.BooleanField(default=False)
 
-    # Observados (preenchidos quando alguma conferência for 'Não')
-    descricao_obs = models.TextField("Descrição observada (se divergente)", blank=True, null=True)
-    numero_serie_obs = models.CharField("Número de série observado (se divergente)", max_length=255, blank=True, null=True)
-    sala_obs_nome = models.CharField("Sala observada (se divergente)", max_length=255, blank=True, null=True)
-    sala_obs_bloco = models.CharField("Bloco observado (se divergente)", max_length=64, blank=True, null=True)
-    estado_obs = models.CharField("Estado observado (se divergente)", max_length=64, blank=True, null=True)
-    responsavel_obs = models.CharField("Responsável/usuário observado (se divergente)", max_length=255, blank=True, null=True)
-
-    # Etiqueta (informação complementar, não entra no cálculo de divergência)
-    etiqueta_possui = models.BooleanField("Possui etiqueta?", default=True)
-    etiqueta_condicao = models.CharField(
-        "Condição da etiqueta",
-        max_length=32,
-        choices=EtiquetaCondicao.choices,
-        blank=True,
-        null=True,
-    )
-
-    avaria_texto = models.TextField("Avaria (se houver)", blank=True, null=True)
-    observacoes = models.TextField("Observações", blank=True, null=True)
-
-    # Sinalizador final
-    divergente = models.BooleanField("Possui divergência?", default=False, db_index=True)
-
-    # Auditoria
-    criado_por = models.ForeignKey(
-        settings.AUTH_USER_MODEL,
-        verbose_name="Criado por",
-        on_delete=models.SET_NULL,
-        blank=True,
-        null=True,
-        related_name="vistorias_bem_criadas",
-    )
-    atualizado_por = models.ForeignKey(
-        settings.AUTH_USER_MODEL,
-        verbose_name="Atualizado por",
-        on_delete=models.SET_NULL,
-        blank=True,
-        null=True,
-        related_name="vistorias_bem_atualizadas",
-    )
-    criado_em = models.DateTimeField("Criado em", auto_now_add=True)
-    atualizado_em = models.DateTimeField("Atualizado em", auto_now=True)
+    criado_por = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, related_name="vistorias_criadas")
+    atualizado_por = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, related_name="vistorias_atualizadas")
+    criado_em = models.DateTimeField(auto_now_add=True)
+    atualizado_em = models.DateTimeField(auto_now=True)
 
     class Meta:
-        verbose_name = "Vistoria de Bem"
-        verbose_name_plural = "Vistorias de Bens"
-        unique_together = (("inventario", "bem"),)  # uma por bem na campanha
-        indexes = [
-            models.Index(fields=["inventario", "status"]),
-            models.Index(fields=["inventario", "divergente"]),
-        ]
-        ordering = ["-atualizado_em"]
+        unique_together = [("inventario", "bem")]
 
-    def __str__(self):
-        return f"{self.bem.tombamento} — {self.get_status_display()}"
+    # ---- helpers ----
+    def _recompute_divergente(self) -> bool:
+        val = any([
+            not self.confere_descricao,
+            not self.confere_numero_serie,
+            not self.confere_local,
+            not self.confere_estado,
+            not self.confere_responsavel,
+        ])
+        self.divergente = val
+        return val
 
-    # --- utilitários de comparação ---
-    def suap_nome_bloco(self):
-        if not self.bem_id:
-            return None, None
+    def _suap_sala_tuple(self):
         return split_sala_bloco(self.bem.sala or "")
 
+    def _obs_sala_tuple(self):
+        nome = (self.sala_obs_nome or "").strip() or None
+        bloco = (self.sala_obs_bloco or "").strip() or None
+        if not nome and not bloco:
+            return None
+        return (nome, bloco)
+
     def encontrado_em_outra_sala(self) -> bool:
-        """True se ENCONTRADO e sala observada difere da sala do SUAP."""
+        """
+        True apenas se:
+        - status = ENCONTRADO,
+        - confere_local = False,
+        - e a sala observada for diferente da sala do SUAP.
+        """
         if self.status != self.Status.ENCONTRADO:
             return False
-        suap_nome, suap_bloco = self.suap_nome_bloco()
-        obs_nome = (self.sala_obs_nome or "").strip() or None
-        obs_bloco = (self.sala_obs_bloco or "").strip() or None
-        return (obs_nome, obs_bloco) != (suap_nome, suap_bloco)
+        if self.confere_local:
+            return False
+        obs = self._obs_sala_tuple()
+        if not obs:
+            return False
+        suap = self._suap_sala_tuple()
 
-    def recomputar_divergencia(self):
-        self.divergente = not (
-            self.confere_descricao
-            and self.confere_numero_serie
-            and self.confere_local
-            and self.confere_estado
-            and self.confere_responsavel
-        )
+        def norm(t):
+            n, b = t
+            n = (n or "").strip() or None
+            b = (b or "").strip() or None
+            return (n, b)
 
+        return norm(obs) != norm(suap)
+
+    # Garante o preenchimento do campo divergente no banco
     def save(self, *args, **kwargs):
-        # Divergência automática
-        self.recomputar_divergencia()
+        self._recompute_divergente()
         super().save(*args, **kwargs)
 
 
-# ------------ Vistoria Extra (item sem registro no SUAP) ------------
 class VistoriaExtra(models.Model):
-    inventario = models.ForeignKey(
-        "vistoria.Inventario",
-        verbose_name="Inventário",
-        on_delete=models.CASCADE,
-        related_name="vistorias_extras",
-    )
+    inventario = models.ForeignKey(Inventario, on_delete=models.CASCADE)
+    descricao_obs = models.TextField()
+    sala_obs_nome = models.CharField(max_length=255, null=True, blank=True)
+    sala_obs_bloco = models.CharField(max_length=255, null=True, blank=True)
+    numero_serie_obs = models.CharField(max_length=200, null=True, blank=True)
+    estado_obs = models.CharField(max_length=200, null=True, blank=True)
+    responsavel_obs = models.CharField(max_length=200, null=True, blank=True)
 
-    # Foto com marca d'água (apenas versão final)
-    foto_marcadagua = models.FileField("Foto do bem (marcada)", upload_to=upload_foto_extra)
-
-    # Descrição e dados observados
-    descricao_obs = models.TextField("Descrição observada")
-    sala_obs_nome = models.CharField("Sala observada", max_length=255)
-    sala_obs_bloco = models.CharField("Bloco observado", max_length=64, blank=True, null=True)
-    numero_serie_obs = models.CharField("Número de série observado", max_length=255, blank=True, null=True)
-    estado_obs = models.CharField("Estado observado", max_length=64, blank=True, null=True)
-    responsavel_obs = models.CharField("Responsável/usuário observado", max_length=255, blank=True, null=True)
-
-    etiqueta_possui = models.BooleanField("Possui etiqueta?", default=False)
+    etiqueta_possui = models.BooleanField(default=False)
     etiqueta_condicao = models.CharField(
-        "Condição da etiqueta",
-        max_length=32,
-        choices=VistoriaBem.EtiquetaCondicao.choices,
-        blank=True,
-        null=True,
+        max_length=20, choices=VistoriaBem.EtiquetaCondicao.choices, null=True, blank=True
     )
+    observacoes = models.TextField(null=True, blank=True)
 
-    observacoes = models.TextField("Observações", blank=True, null=True)
+    foto_marcadagua = models.ImageField(upload_to="vistorias/", null=True, blank=True)
 
-    criado_por = models.ForeignKey(
-        settings.AUTH_USER_MODEL,
-        verbose_name="Criado por",
-        on_delete=models.SET_NULL,
-        blank=True,
-        null=True,
-        related_name="vistorias_extra_criadas",
-    )
-    criado_em = models.DateTimeField("Criado em", auto_now_add=True)
-
-    class Meta:
-        verbose_name = "Vistoria (sem registro SUAP)"
-        verbose_name_plural = "Vistorias (sem registro SUAP)"
-        ordering = ["-criado_em"]
-
-    def __str__(self):
-        return f"Extra — {self.descricao_obs[:50]}"
+    criado_por = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, related_name="extras_criados")
+    criado_em = models.DateTimeField(auto_now_add=True)

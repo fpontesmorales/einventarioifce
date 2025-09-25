@@ -1,19 +1,19 @@
 {% extends "vistoria/base_vistoria.html" %}
-{% block title %}{{ sala.nome }}{% if sala.bloco %} — {{ sala.bloco }}{% endif %}{% endblock %}
+{% block title %}Sala — {{ sala.nome }}{% endblock %}
 
 {% block content %}
+
   <div class="card">
-    <div class="row" style="justify-content:space-between;">
+    <div class="row" style="justify-content:space-between;align-items:center;">
       <div>
-        <strong>{{ sala.nome }}</strong>
-        {% if sala.bloco %}<span class="muted">— {{ sala.bloco }}</span>{% endif %}
+        <div class="muted">Sala</div>
+        <div style="font-weight:700">{{ sala.nome }}{% if sala.bloco %} — {{ sala.bloco }}{% endif %}</div>
       </div>
-      <a class="btn" href="{% url 'vistoria_public:salas_por_bloco' bloco=sala.bloco|default:'SEM BLOCO' %}">← Voltar</a>
+      <a class="btn" href="{% url 'vistoria_public:salas_por_bloco' bloco=sala.bloco|default:'SEM BLOCO' %}">← Voltar ao bloco</a>
     </div>
 
-    <div class="row" style="margin-top:10px; justify-content:space-between;">
-      <div><span class="stat">{{ total_elegiveis }}</span> elegíveis</div>
-      <div class="muted">{{ vistoriados_count }} vistoriados</div>
+    <div class="muted" style="margin-top:6px;">
+      Total elegíveis: <strong>{{ total_elegiveis }}</strong> — Vistoriados: <strong>{{ vistoriados_count }}</strong> ({{ pct_vistoriado }}%)
     </div>
 
     <div class="progress" style="margin:8px 0;">
@@ -32,90 +32,111 @@
   </div>
 
   {% if nao_vistoriados %}
-    <div class="group-title">Não vistoriados</div>
-    <div class="grid">
-      {% for b in nao_vistoriados %}
-        <a class="item" href="{% url 'vistoria_public:vistoria_bem_form' sala_id=sala.id tombamento=b.tombamento %}">
-          <div><strong>{{ b.tombamento }}</strong></div>
-          <div class="muted">{{ b.descricao|default:"(sem descrição)" }}</div>
-        </a>
-      {% endfor %}
+    <div class="card">
+      <div class="group-title">Não vistoriados ({{ nao_vistoriados|length }})</div>
+      <ul>
+        {% for b in nao_vistoriados %}
+          <li class="item">
+            <a href="{% url 'vistoria_public:vistoria_bem_form' sala_id=sala.id tombamento=b.tombamento %}">
+              <strong>{{ b.tombamento }}</strong> — {{ b.descricao|default:"(sem descrição)" }}
+            </a>
+          </li>
+        {% endfor %}
+      </ul>
     </div>
   {% endif %}
 
   {% if vistoriados_ok %}
-    <div class="group-title">Vistoriados (sem divergência)</div>
-    <div class="grid">
-      {% for b,v in vistoriados_ok %}
-        <a class="item ok" href="{% url 'vistoria_public:vistoria_bem_form' sala_id=sala.id tombamento=b.tombamento %}">
-          <div class="row" style="justify-content:space-between;">
-            <div><strong>{{ b.tombamento }}</strong></div>
-            <span class="badge">OK</span>
-          </div>
-          <div class="muted">{{ b.descricao|default:"(sem descrição)" }}</div>
-        </a>
-      {% endfor %}
+    <div class="card ok">
+      <div class="group-title">Vistoriados (sem divergência) ({{ vistoriados_ok|length }})</div>
+      <ul>
+        {% for b,v in vistoriados_ok %}
+          <li class="item ok">
+            <a href="{% url 'vistoria_public:vistoria_bem_form' sala_id=sala.id tombamento=b.tombamento %}">
+              <strong>{{ b.tombamento }}</strong> — {{ b.descricao|default:"(sem descrição)" }}
+            </a>
+          </li>
+        {% endfor %}
+      </ul>
     </div>
   {% endif %}
 
   {% if vistoriados_div %}
-    <div class="group-title">Vistoriados (com divergência)</div>
-    <div class="grid">
-      {% for b,v in vistoriados_div %}
-        <a class="item div" href="{% url 'vistoria_public:vistoria_bem_form' sala_id=sala.id tombamento=b.tombamento %}">
-          <div class="row" style="justify-content:space-between;">
-            <div><strong>{{ b.tombamento }}</strong></div>
-            <span class="badge">Divergente</span>
-          </div>
-          <div class="muted">{{ b.descricao|default:"(sem descrição)" }}</div>
-        </a>
-      {% endfor %}
+    <div class="card div">
+      <div class="group-title">Vistoriados (com divergência) ({{ vistoriados_div|length }})</div>
+      <ul>
+        {% for b,v in vistoriados_div %}
+          <li class="item div">
+            <a href="{% url 'vistoria_public:vistoria_bem_form' sala_id=sala.id tombamento=b.tombamento %}">
+              <strong>{{ b.tombamento }}</strong> — {{ b.descricao|default:"(sem descrição)" }}
+            </a>
+          </li>
+        {% endfor %}
+      </ul>
     </div>
   {% endif %}
 
   {% if nao_encontrados %}
-    <div class="group-title">Não encontrados</div>
-    <div class="grid">
-      {% for b,v in nao_encontrados %}
-        <a class="item na" href="{% url 'vistoria_public:vistoria_bem_form' sala_id=sala.id tombamento=b.tombamento %}">
-          <div class="row" style="justify-content:space-between;">
-            <div><strong>{{ b.tombamento }}</strong></div>
-            <span class="badge">Não encontrado</span>
-          </div>
-          <div class="muted">{{ b.descricao|default:"(sem descrição)" }}</div>
-        </a>
-      {% endfor %}
+    <div class="card na">
+      <div class="group-title">Não encontrados ({{ nao_encontrados|length }})</div>
+      <ul>
+        {% for b,v in nao_encontrados %}
+          <li class="item na">
+            <a href="{% url 'vistoria_public:vistoria_bem_form' sala_id=sala.id tombamento=b.tombamento %}">
+              <strong>{{ b.tombamento }}</strong> — {{ b.descricao|default:"(sem descrição)" }}
+            </a>
+          </li>
+        {% endfor %}
+      </ul>
+    </div>
+  {% endif %}
+
+  {% if recebidos_aqui %}
+    <div class="card mv">
+      <div class="group-title">Cadastrados no SUAP em outra sala (vistoriados aqui) ({{ recebidos_aqui|length }})</div>
+      <ul>
+        {% for b,v in recebidos_aqui %}
+          {% with b.sala|default:"—" as suap %}
+            <li class="item mv">
+              <a href="{% url 'vistoria_public:vistoria_bem_form' sala_id=sala.id tombamento=b.tombamento %}">
+                <strong>{{ b.tombamento }}</strong> — {{ b.descricao|default:"(sem descrição)" }}
+              </a>
+              <div class="muted">No SUAP: {{ suap }}</div>
+            </li>
+          {% endwith %}
+        {% endfor %}
+      </ul>
     </div>
   {% endif %}
 
   {% if movidos %}
-    <div class="group-title">Encontrados em outra sala (aparecem no final)</div>
-    <div class="grid">
-      {% for b,v in movidos %}
-        <a class="item mv" href="{% url 'vistoria_public:vistoria_bem_form' sala_id=sala.id tombamento=b.tombamento %}">
-          <div class="row" style="justify-content:space-between;">
-            <div><strong>{{ b.tombamento }}</strong></div>
-            <span class="badge">Movido</span>
-          </div>
-          <div class="muted">{{ b.descricao|default:"(sem descrição)" }}</div>
-          <div class="muted">Observado em: {{ v.sala_obs_nome }}{% if v.sala_obs_bloco %} — {{ v.sala_obs_bloco }}{% endif %}</div>
-        </a>
-      {% endfor %}
+    <div class="card mv">
+      <div class="group-title">Encontrados em outra sala ({{ movidos|length }})</div>
+      <ul>
+        {% for b,v in movidos %}
+          <li class="item mv">
+            <a href="{% url 'vistoria_public:vistoria_bem_form' sala_id=sala.id tombamento=b.tombamento %}">
+              <strong>{{ b.tombamento }}</strong> — {{ b.descricao|default:"(sem descrição)" }}
+            </a>
+            <div class="muted">Observado em: {{ v.sala_obs_nome }}{% if v.sala_obs_bloco %} — {{ v.sala_obs_bloco }}{% endif %}</div>
+          </li>
+        {% endfor %}
+      </ul>
     </div>
   {% endif %}
 
   {% if extras %}
-    <div class="group-title">Itens sem registro (nesta sala)</div>
-    <div class="grid">
-      {% for x in extras %}
-        <div class="item sr">
-          <div class="row" style="justify-content:space-between;">
-            <div><strong>SEM TOMBO</strong></div>
-            <span class="badge">Sem registro</span>
-          </div>
-          <div class="muted">{{ x.descricao_obs|default:"(sem descrição)" }}</div>
-        </div>
-      {% endfor %}
+    <div class="card sr">
+      <div class="group-title">Itens sem registro ({{ extras|length }})</div>
+      <ul>
+        {% for x in extras %}
+          <li class="item sr">
+            <span><strong>SEM TOMBO</strong> — {{ x.descricao_obs|default:"(sem descrição)" }}</span>
+            {% if x.observacoes %}<div class="muted">{{ x.observacoes }}</div>{% endif %}
+          </li>
+        {% endfor %}
+      </ul>
     </div>
   {% endif %}
+
 {% endblock %}

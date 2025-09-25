@@ -143,7 +143,10 @@ def _stats_salas_do_bloco(inv: Inventario, bloco_alvo: str | None):
     return items
 
 def _listas_da_sala(inv: Inventario, sala_obj: Sala):
+    """Listas para a página da sala (com 'recebidos_aqui')."""
     elegiveis = inv.bens_elegiveis_qs()
+
+    # Bens cujo SUAP aponta esta sala
     bens_sala = []
     for b in elegiveis.only("id", "sala", "descricao", "tombamento"):
         nome, bloco = split_sala_bloco(b.sala or "")
@@ -151,7 +154,9 @@ def _listas_da_sala(inv: Inventario, sala_obj: Sala):
             bens_sala.append(b)
     ids = [b.id for b in bens_sala]
 
-    v_map = {v.bem_id: v for v in VistoriaBem.objects.filter(inventario=inv, bem_id__in=ids).select_related("bem")}
+    v_map = {v.bem_id: v for v in VistoriaBem.objects.filter(
+        inventario=inv, bem_id__in=ids
+    ).select_related("bem")}
 
     nao_vistoriados, vistoriados_ok, vistoriados_div, nao_encontrados, movidos = [], [], [], [], []
     for b in bens_sala:
@@ -163,12 +168,30 @@ def _listas_da_sala(inv: Inventario, sala_obj: Sala):
             nao_encontrados.append((b, v))
         else:
             if v.encontrado_em_outra_sala():
-                movidos.append((b, v))
+                movidos.append((b, v))  # saíram desta sala
             elif v.divergente:
                 vistoriados_div.append((b, v))
             else:
                 vistoriados_ok.append((b, v))
 
+    # -------- NOVO: recebidos aqui (vistoriados nesta sala, SUAP aponta outra) --------
+    recebidos_aqui = []
+    v_receb = VistoriaBem.objects.select_related("bem").filter(
+        inventario=inv,
+        status=VistoriaBem.Status.ENCONTRADO,
+        confere_local=False,
+        sala_obs_nome=sala_obj.nome,
+        sala_obs_bloco=(sala_obj.bloco or None),
+    )
+    for v in v_receb:
+        suap_nome, suap_bloco = split_sala_bloco(v.bem.sala or "")
+        suap_t = ((suap_nome or "").strip() or None, (suap_bloco or "").strip() or None)
+        curr_t = (sala_obj.nome, sala_obj.bloco or None)
+        if suap_t != curr_t:
+            recebidos_aqui.append((v.bem, v))
+    recebidos_aqui.sort(key=lambda pair: pair[0].tombamento)
+
+    # Extras criados nesta sala
     extras = list(VistoriaExtra.objects.filter(
         inventario=inv,
         sala_obs_nome=sala_obj.nome,
@@ -180,7 +203,8 @@ def _listas_da_sala(inv: Inventario, sala_obj: Sala):
         "vistoriados_ok": vistoriados_ok,
         "vistoriados_div": vistoriados_div,
         "nao_encontrados": nao_encontrados,
-        "movidos": movidos,
+        "movidos": movidos,                # cadastrados aqui, encontrados em outra sala
+        "recebidos_aqui": recebidos_aqui,  # cadastrados em outra sala, encontrados aqui
         "extras": extras,
     }
 
@@ -485,8 +509,6 @@ def relatorio_resumo_csv(request):
     bloco_f = (request.GET.get("bloco") or "").strip() or None
 
     elegiveis = list(inv.bens_elegiveis_qs().only("id", "sala", "descricao"))
-    sala_map = _sala_lookup_by_key()
-
     stats = {}  # key: (nome, bloco)
     for b in elegiveis:
         nome, bloco = split_sala_bloco(b.sala or "")
@@ -523,7 +545,6 @@ def relatorio_resumo_csv(request):
         stats.setdefault(obs_key, {"total": 0, "vistoriados": 0, "ok": 0, "div": 0, "naoencontrado": 0, "mov_fora": 0, "mov_receb": 0, "extra": 0})
         stats[obs_key]["extra"] += 1
 
-    # Filtro por bloco, se informado
     items = []
     for (nome, bloco), st in stats.items():
         if bloco_f and bloco != bloco_f:
@@ -534,10 +555,8 @@ def relatorio_resumo_csv(request):
         pct = int((vist * 100) / total) if total else 0
         items.append([bloco, nome, total, vist, st["ok"], st["div"], st["naoencontrado"], st["mov_fora"], st["mov_receb"], st["extra"], pend, pct])
 
-    # Ordena por total desc
     items.sort(key=lambda r: r[2], reverse=True)
 
-    # CSV (delimitador ; e BOM para Excel pt-BR)
     resp = HttpResponse(content_type="text/csv; charset=utf-8")
     resp["Content-Disposition"] = 'attachment; filename="resumo_salas.csv"'
     resp.write("\ufeff")
@@ -554,7 +573,6 @@ def relatorio_detalhes_csv(request):
     sala_id = request.GET.get("sala_id")
     bloco_f = (request.GET.get("bloco") or "").strip() or None
 
-    # CSV
     resp = HttpResponse(content_type="text/csv; charset=utf-8")
     resp["Content-Disposition"] = 'attachment; filename="detalhes_vistorias.csv"'
     resp.write("\ufeff")
@@ -567,11 +585,9 @@ def relatorio_detalhes_csv(request):
         "Avaria", "Observações", "Responsável SUAP", "Responsável observado"
     ])
 
-    # Vistorias de bens
     v_qs = VistoriaBem.objects.select_related("bem").filter(inventario=inv)
     if sala_id:
         sala = get_object_or_404(Sala, id=int(sala_id))
-        # filtra pelo SUAP (sala original)
         v_qs = [v for v in v_qs if split_sala_bloco(v.bem.sala or "") == (sala.nome, sala.bloco)]
     elif bloco_f:
         v_qs = [v for v in v_qs if (split_sala_bloco(v.bem.sala or "")[1] or "SEM BLOCO") == bloco_f]
@@ -607,7 +623,6 @@ def relatorio_detalhes_csv(request):
             (v.responsavel_obs or ""),
         ])
 
-    # Extras
     x_qs = VistoriaExtra.objects.filter(inventario=inv)
     if sala_id:
         sala = get_object_or_404(Sala, id=int(sala_id))

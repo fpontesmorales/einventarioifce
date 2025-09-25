@@ -1,106 +1,99 @@
-from django.contrib import admin, messages
-from django.db import transaction
-from django.utils.html import format_html
+from django.contrib import admin
+from .models import Inventario, VistoriaBem, VistoriaExtra
 
-from .models import Inventario, VistoriaBem, VistoriaExtra, split_sala_bloco
 
-# -------- Inventário --------
+# ---------------- Inventário ----------------
 @admin.register(Inventario)
 class InventarioAdmin(admin.ModelAdmin):
-    list_display = ("ano", "ativo", "incluir_livros", "data_inicio", "data_fim", "criado_por", "criado_em")
+    list_display = ("ano", "ativo", "incluir_livros", "criado_em", "atualizado_em")
     list_filter = ("ativo", "incluir_livros")
-    search_fields = ("ano",)
-    actions = ["ativar", "desativar", "habilitar_livros", "desabilitar_livros"]
-    fields = ("ano", "ativo", "incluir_livros", "data_inicio", "data_fim")  # mostra o checkbox no form
+    ordering = ("-ano",)
+    actions = ["ativar_unico", "desativar_selecionados"]
 
-    def save_model(self, request, obj, form, change):
-        # garante 1 ativo por vez de forma amigável
-        if obj.ativo:
-            with transaction.atomic():
-                Inventario.objects.exclude(pk=obj.pk).update(ativo=False)
-                obj.criado_por = obj.criado_por or request.user
-                super().save_model(request, obj, form, change)
-        else:
-            obj.criado_por = obj.criado_por or request.user
-            super().save_model(request, obj, form, change)
-
-    @admin.action(description="Ativar inventário (desativa os demais)")
-    def ativar(self, request, queryset):
-        if queryset.count() != 1:
-            self.message_user(request, "Selecione exatamente um inventário para ativar.", level=messages.WARNING)
-            return
-        inv = queryset.first()
-        with transaction.atomic():
-            Inventario.objects.exclude(pk=inv.pk).update(ativo=False)
+    @admin.action(description="Ativar (desativando os demais)")
+    def ativar_unico(self, request, queryset):
+        if queryset.exists():
+            Inventario.objects.update(ativo=False)
+            inv = queryset.order_by("-ano").first()
             inv.ativo = True
             inv.save()
-        self.message_user(request, f"Inventário {inv.ano} ativado com sucesso.", level=messages.SUCCESS)
+            self.message_user(request, f"Inventário {inv.ano} ativado; os demais foram desativados.")
 
-    @admin.action(description="Desativar inventário")
-    def desativar(self, request, queryset):
-        updated = queryset.update(ativo=False)
-        self.message_user(request, f"{updated} inventário(s) desativado(s).", level=messages.SUCCESS)
-
-    @admin.action(description="Habilitar livros (ED 4490.52.18)")
-    def habilitar_livros(self, request, queryset):
-        updated = queryset.update(incluir_livros=True)
-        self.message_user(request, f"Livros habilitados em {updated} inventário(s).", level=messages.SUCCESS)
-
-    @admin.action(description="Desabilitar livros (ED 4490.52.18)")
-    def desabilitar_livros(self, request, queryset):
-        updated = queryset.update(incluir_livros=False)
-        self.message_user(request, f"Livros desabilitados em {updated} inventário(s).", level=messages.SUCCESS)
+    @admin.action(description="Desativar selecionados")
+    def desativar_selecionados(self, request, queryset):
+        n = queryset.update(ativo=False)
+        self.message_user(request, f"{n} inventário(s) desativado(s).")
 
 
-# -------- Vistoria de Bem --------
+# ---------------- Vistoria de Bem ----------------
 @admin.register(VistoriaBem)
 class VistoriaBemAdmin(admin.ModelAdmin):
+    raw_id_fields = ("bem",)
     list_display = (
+        "bem",
         "inventario",
-        "bem_link",
         "status",
         "divergente",
-        "sala_suap_fmt",
-        "sala_obs_fmt",
+        "movido",
+        "etiqueta_possui",
+        "etiqueta_condicao",
         "atualizado_em",
         "atualizado_por",
     )
-    list_filter = ("inventario", "status", "divergente")
-    search_fields = ("bem__tombamento", "bem__descricao", "sala_obs_nome", "sala_obs_bloco")
-    autocomplete_fields = ("bem",)
-    readonly_fields = ("criado_em", "atualizado_em")
+    list_filter = (
+        "inventario",
+        "status",
+        "divergente",
+        "etiqueta_possui",
+        "etiqueta_condicao",
+    )
+    search_fields = (
+        "bem__tombamento",
+        "bem__descricao",
+        "sala_obs_nome",
+        "sala_obs_bloco",
+        "responsavel_obs",
+    )
+    readonly_fields = ("criado_em", "atualizado_em", "foto_preview")
 
-    def bem_link(self, obj):
-        return format_html("<strong>{}</strong> — {}", obj.bem.tombamento, obj.bem.descricao[:80])
-    bem_link.short_description = "Bem"
+    fieldsets = (
+        (None, {
+            "fields": ("inventario", "bem", "status", "divergente",
+                       "criado_em", "atualizado_em", "criado_por", "atualizado_por")
+        }),
+        ("Conferências", {
+            "fields": (
+                "confere_descricao", "descricao_obs",
+                "confere_numero_serie", "numero_serie_obs",
+                "confere_local", "sala_obs_nome", "sala_obs_bloco",
+                "confere_estado", "estado_obs",
+                "confere_responsavel", "responsavel_obs",
+            )
+        }),
+        ("Etiqueta e anotações", {
+            "fields": ("etiqueta_possui", "etiqueta_condicao", "avaria_texto", "observacoes")
+        }),
+        ("Foto", {
+            "fields": ("foto_marcadagua", "foto_preview")
+        }),
+    )
 
-    def sala_suap_fmt(self, obj):
-        nome, bloco = split_sala_bloco(obj.bem.sala or "")
-        if nome:
-            return f"{nome} — {bloco}" if bloco else nome
-        return "-"
-    sala_suap_fmt.short_description = "Sala (SUAP)"
+    @admin.display(boolean=True, description="Movido?")
+    def movido(self, obj: VistoriaBem) -> bool:
+        return obj.encontrado_em_outra_sala()
 
-    def sala_obs_fmt(self, obj):
-        if obj.sala_obs_nome:
-            return f"{obj.sala_obs_nome} — {obj.sala_obs_bloco}" if obj.sala_obs_bloco else obj.sala_obs_nome
-        return "-"
-    sala_obs_fmt.short_description = "Sala observada"
+    @admin.display(description="Prévia")
+    def foto_preview(self, obj: VistoriaBem):
+        if obj and obj.foto_marcadagua:
+            from django.utils.safestring import mark_safe
+            return mark_safe(f'<img src="{obj.foto_marcadagua.url}" style="max-width:320px;height:auto;border:1px solid #ddd;border-radius:8px;" />')
+        return "—"
 
 
-# -------- Vistoria Extra (sem SUAP) --------
+# ---------------- Itens sem registro ----------------
 @admin.register(VistoriaExtra)
 class VistoriaExtraAdmin(admin.ModelAdmin):
-    list_display = ("inventario", "descricao_curta", "sala_fmt", "criado_por", "criado_em")
-    list_filter = ("inventario",)
-    search_fields = ("descricao_obs", "sala_obs_nome", "sala_obs_bloco")
-
-    def descricao_curta(self, obj):
-        return (obj.descricao_obs or "")[:80]
-    descricao_curta.short_description = "Descrição"
-
-    def sala_fmt(self, obj):
-        if obj.sala_obs_nome:
-            return f"{obj.sala_obs_nome} — {obj.sala_obs_bloco}" if obj.sala_obs_bloco else obj.sala_obs_nome
-        return "-"
-    sala_fmt.short_description = "Sala"
+    list_display = ("descricao_obs", "sala_obs_nome", "sala_obs_bloco", "inventario", "criado_em", "criado_por")
+    list_filter = ("inventario", "sala_obs_bloco")
+    search_fields = ("descricao_obs", "sala_obs_nome", "sala_obs_bloco", "responsavel_obs")
+    readonly_fields = ("criado_em",)
