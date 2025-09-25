@@ -1,18 +1,45 @@
-from pathlib import Path
 import os
+from pathlib import Path
 from dotenv import load_dotenv
 
+# Carrega .env
+load_dotenv()
+
 BASE_DIR = Path(__file__).resolve().parent.parent
-load_dotenv(BASE_DIR / ".env")
 
-# --- Segurança / Debug ---
-SECRET_KEY = os.getenv("SECRET_KEY", "dev-secret-override-me")
+# -----------------------------------------------------------------------------
+# Django básico
+# -----------------------------------------------------------------------------
+SECRET_KEY = os.getenv("SECRET_KEY", "dev-insecure-key-change-me")
 DEBUG = os.getenv("DEBUG", "0") == "1"
-ALLOWED_HOSTS = [h.strip() for h in os.getenv("ALLOWED_HOSTS", "127.0.0.1,localhost").split(",") if h.strip()]
 
-# --- Apps ---
+ALLOWED_HOSTS = [h.strip() for h in os.getenv(
+    "ALLOWED_HOSTS",
+    "einventario.morales.dev.br,localhost,127.0.0.1"
+).split(",") if h.strip()]
+
+# Necessário com esquema (https://) para CSRF no Django 5+
+CSRF_TRUSTED_ORIGINS = [o.strip() for o in os.getenv(
+    "CSRF_TRUSTED_ORIGINS",
+    "https://einventario.morales.dev.br"
+).split(",") if o.strip()]
+
+# Quando estiver atrás de proxy (Cloudflare → Nginx)
+USE_X_FORWARDED_HOST = os.getenv("USE_X_FORWARDED_HOST", "1") == "1"
+SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+
+# Cookies e redirect seguro apenas em produção
+if not DEBUG:
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True
+    SECURE_SSL_REDIRECT = False  # Cloudflare lida com HTTPS na borda
+
+# -----------------------------------------------------------------------------
+# Apps
+# -----------------------------------------------------------------------------
 INSTALLED_APPS = [
-    "jazzmin",  # tema do admin (pacote PyPI: django-jazzmin)
+    "jazzmin",
+
     "django.contrib.admin",
     "django.contrib.auth",
     "django.contrib.contenttypes",
@@ -20,7 +47,6 @@ INSTALLED_APPS = [
     "django.contrib.messages",
     "django.contrib.staticfiles",
 
-    # Apps do projeto
     "core",
     "patrimonio",
     "importacao",
@@ -57,55 +83,63 @@ TEMPLATES = [
 
 WSGI_APPLICATION = "einventarioifce.wsgi.application"
 
-# --- Banco de dados: PostgreSQL via .env ---
-DB_ENGINE = os.getenv("DB_ENGINE", "django.db.backends.postgresql")
-if DB_ENGINE != "django.db.backends.postgresql":
-    raise RuntimeError("Este projeto usa PostgreSQL. Ajuste DB_ENGINE no .env se necessário.")
-
+# -----------------------------------------------------------------------------
+# Banco de dados (Postgres por padrão; usa .env)
+# -----------------------------------------------------------------------------
 DATABASES = {
     "default": {
-        "ENGINE": DB_ENGINE,
+        "ENGINE": "django.db.backends.postgresql",
         "NAME": os.getenv("DB_NAME", "einventario"),
         "USER": os.getenv("DB_USER", "einventario"),
-        "PASSWORD": os.getenv("DB_PASSWORD", "password"),
-        "HOST": os.getenv("DB_HOST", "127.0.0.1"),
+        "PASSWORD": os.getenv("DB_PASSWORD", ""),
+        "HOST": os.getenv("DB_HOST", "localhost"),
         "PORT": os.getenv("DB_PORT", "5432"),
-        "CONN_MAX_AGE": 60,  # 1 min de pool
+        "CONN_MAX_AGE": 60,
     }
 }
 
-# --- Localização / Fuso ---
+# -----------------------------------------------------------------------------
+# Locale / TZ
+# -----------------------------------------------------------------------------
 LANGUAGE_CODE = "pt-br"
-TIME_ZONE = "America/Fortaleza"
+TIME_ZONE = os.getenv("TIME_ZONE", "America/Fortaleza")
 USE_I18N = True
 USE_TZ = True
 
-# --- Arquivos estáticos e mídia ---
+# -----------------------------------------------------------------------------
+# Static / Media (Nginx serve /static e /media)
+# -----------------------------------------------------------------------------
 STATIC_URL = "/static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
-STATICFILES_DIRS = [BASE_DIR / "static"]
 
 MEDIA_URL = "/media/"
 MEDIA_ROOT = BASE_DIR / "media"
 
-# --- Django Admin / Jazzmin ---
+# -----------------------------------------------------------------------------
+# Auth
+# -----------------------------------------------------------------------------
+LOGIN_URL = "/admin/login/"
+DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
+
+# -----------------------------------------------------------------------------
+# Jazzmin (tema Yeti, para evitar o aviso do 'light')
+# -----------------------------------------------------------------------------
 JAZZMIN_SETTINGS = {
-    "site_title": "E-Inventário IFCE — Caucaia",
+    "site_title": "E-Inventário IFCE",
     "site_header": "E-Inventário IFCE",
-    "site_brand": "IFCE Caucaia",
     "welcome_sign": "Bem-vindo ao E-Inventário",
-    "copyright": "IFCE Campus Caucaia",
+    "show_ui_builder": False,
 }
 JAZZMIN_UI_TWEAKS = {
-    "theme": "cerulean",  # tema válido do Jazzmin (evita o aviso "light not found")
+    "theme": "yeti",         # claro
+    "dark_mode_theme": "darkly",  # opcional para dark mode
 }
 
-# --- Senhas / Auth ---
-AUTH_PASSWORD_VALIDATORS = [
-    {"NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"},
-    {"NAME": "django.contrib.auth.password_validation.MinimumLengthValidator"},
-    {"NAME": "django.contrib.auth.password_validation.CommonPasswordValidator"},
-    {"NAME": "django.contrib.auth.password_validation.NumericPasswordValidator"},
-]
-
-DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
+# -----------------------------------------------------------------------------
+# Segurança adicional opcional (ajuste conforme necessidade)
+# -----------------------------------------------------------------------------
+# X_FRAME_OPTIONS = "DENY"
+# SECURE_CONTENT_TYPE_NOSNIFF = True
+# SECURE_BROWSER_XSS_FILTER = True
+# CSRF_COOKIE_HTTPONLY = False  # True pode atrapalhar admin; deixe False
+# SESSION_COOKIE_HTTPONLY = True
