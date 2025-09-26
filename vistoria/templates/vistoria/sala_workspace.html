@@ -130,9 +130,43 @@
       <div class="group-title">Itens sem registro ({{ extras|length }})</div>
       <ul>
         {% for x in extras %}
-          <li class="item sr">
-            <span><strong>SEM TOMBO</strong> — {{ x.descricao_obs|default:"(sem descrição)" }}</span>
-            {% if x.observacoes %}<div class="muted">{{ x.observacoes }}</div>{% endif %}
+          <li class="item sr" style="list-style:none;">
+            <details>
+              <summary style="cursor:pointer;">
+                <strong>SEM TOMBO</strong> — {{ x.descricao_obs|default:"(sem descrição)" }}
+              </summary>
+
+              <div style="margin-top:8px;">
+                {% if x.numero_serie_obs %}
+                  <p><strong>Nº de série:</strong> {{ x.numero_serie_obs }}</p>
+                {% endif %}
+
+                {% if x.estado_obs %}
+                  <p><strong>Estado:</strong> {{ x.estado_obs }}</p>
+                {% endif %}
+
+                {% if x.responsavel_obs %}
+                  <p><strong>Responsável:</strong> {{ x.responsavel_obs }}</p>
+                {% endif %}
+
+                <p>
+                  <strong>Etiqueta:</strong>
+                  {% if x.etiqueta_possui %}Sim{% else %}Não{% endif %}
+                  {% if x.etiqueta_condicao %} — {{ x.etiqueta_condicao }}{% endif %}
+                </p>
+
+                {% if x.observacoes %}
+                  <p class="muted"><strong>Observações:</strong> {{ x.observacoes }}</p>
+                {% endif %}
+
+                {% if x.foto_marcadagua %}
+                  <div style="margin-top:12px;">
+                    <img src="{{ x.foto_marcadagua.url }}" alt="Foto do item sem registro"
+                         style="max-width:100%;border-radius:12px;border:1px solid #e5e7eb;">
+                  </div>
+                {% endif %}
+              </div>
+            </details>
           </li>
         {% endfor %}
       </ul>

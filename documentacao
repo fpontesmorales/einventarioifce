@@ -1,0 +1,293 @@
+perfeito! abaixo vai a **Seção de Comandos Práticos & Operação** (inclui local + servidor com Docker/Cloudflared/SSH), as **configurações que você já aplicou no servidor**, e um **mapa-resumo** do que foi feito até aqui. Tá tudo em blocos fáceis de copiar/colar no seu `MEMORIAL.md`.
+
+---
+
+# Seção — Comandos práticos & operação (Local e Servidor)
+
+## Convenções & caminhos
+
+* **Repositório**: `einventarioifce`
+* **Dev (Windows)**: `C:\einventarioifce`
+
+  * venv: `.venv` (Python 3.13)
+* **Servidor (Ubuntu)**: `/srv/einventarioifce`
+* **Docker Compose (prod)** – serviços:
+
+  * `web` (Django + Gunicorn) → exposto via **nginx** interno
+  * `nginx` (reverse proxy) → **porta do host 8002**
+  * `postgres` (banco) → volume persistente
+* **Cloudflare Tunnel**
+
+  * `config`: `/etc/cloudflared/config.yml`
+  * **tunnel id**: `28936bb7-cf74-428b-926a-73beef773192`
+  * **service** (systemd): `cloudflared-vm101-web.service`
+  * **hostname**: `einventario.morales.dev.br` → `http://127.0.0.1:8002`
+
+---
+
+## Ciclo de atualização — MáQUINA LOCAL
+
+> Use isto quando fizer alterações e quiser empurrar para o servidor.
+
+```bash
+# 1) Ativar venv (Windows PowerShell)
+cd C:\einventarioifce
+.\.venv\Scripts\Activate.ps1
+
+# 2) Checagens básicas (opcional)
+python manage.py check
+python manage.py makemigrations --check   # garante que não faltou migração
+# (se criar migrações:)
+python manage.py makemigrations
+python manage.py migrate
+
+# 3) Commit & push
+git add -A
+git commit -m "feat/fix: descrição curta do que mudou"
+git push origin main
+```
+
+> Dica: se mexeu em dependências (requirements.txt), **avise** que no servidor precisa `--build` na hora do `docker compose up`.
+
+---
+
+## Deploy — SERVIDOR (Ubuntu + Docker)
+
+> Conecta, puxa o código, aplica migrações/coleta estáticos e reinicia os serviços.
+
+```bash
+# 0) SSH
+ssh morales@servidor-web
+
+# 1) Ir para o projeto
+cd /srv/einventarioifce
+
+# 2) Trazer a versão publicada (remoto → main)
+git fetch --all
+git reset --hard origin/main
+# (ou: git pull --rebase)
+
+# 3) Subir containers
+#    - Se NÃO mudou dependência/sistema: apenas reinicie o web/nginx
+docker compose up -d web nginx
+#    - Se mudou Dockerfile/requirements:
+docker compose up -d --build web nginx
+
+# 4) Migrações e estáticos
+docker compose exec web python manage.py migrate --noinput
+docker compose exec web python manage.py collectstatic --noinput
+
+# 5) Ver logs rápidos (problemas imediatos)
+docker compose logs -n 100 web
+docker compose logs -n 100 nginx
+docker compose logs -n 100 postgres
+```
+
+### Smoke tests rápidos
+
+```bash
+# No servidor (deve responder o Nginx)
+curl -I http://127.0.0.1:8002/
+
+# No navegador:
+https://einventario.morales.dev.br/
+https://einventario.morales.dev.br/admin/
+https://einventario.morales.dev.br/vistoria/blocos/
+```
+
+---
+
+## Cloudflared — Operação & conferência
+
+> Você **já** tem o serviço rodando e apontando `einventario.morales.dev.br → 127.0.0.1:8002`.
+
+Arquivos/serviço importantes:
+
+* Binário: `/usr/local/bin/cloudflared`
+* Config: `/etc/cloudflared/config.yml` (ingress com o hostname e porta 8002)
+* Service: `cloudflared-vm101-web.service`
+
+Comandos úteis:
+
+```bash
+# Ver status do túnel
+sudo systemctl status cloudflared-vm101-web.service
+
+# Logs (tempo real)
+journalctl -u cloudflared-vm101-web.service -f
+
+# Reiniciar (se editar config.yml)
+sudo systemctl restart cloudflared-vm101-web.service
+```
+
+*Observação*: Você já configurou a rota DNS para esse túnel anteriormente, então **não** precisa rodar `tunnel route dns` de novo.
+
+---
+
+## Permissões & pastas no servidor
+
+Estrutura padrão (bind-mounts/volumes recomendados):
+
+```
+/srv/einventarioifce
+├─ .env
+├─ docker-compose.yml
+├─ einventarioifce/  (código)
+├─ media/            (uploads/fotos com marca d'água)
+└─ static/           (coletados)
+```
+
+Ajustes de permissão úteis (se algum upload falhar por permissão):
+
+```bash
+# Garantir que as pastas existam
+mkdir -p /srv/einventarioifce/media /srv/einventarioifce/static
+
+# Dar permissão de escrita (modo pragmático)
+sudo chown -R $USER:$USER /srv/einventarioifce
+sudo chmod -R 775 /srv/einventarioifce/media /srv/einventarioifce/static
+```
+
+> Se o container roda como root (comum), 775 já resolve; se preferir mais rígido, ajuste o usuário do processo no Dockerfile/compose e alinhe o owner do host.
+
+---
+
+## Troubleshooting rápido
+
+* **“gunicorn: not found”** ao subir `web`
+  → Rebuild da imagem: `docker compose up -d --build web` (garante instalação de deps)
+
+* **502 Bad Gateway** no domínio
+  → `docker compose logs -n 100 nginx` e `web`: ver se o `web` está “ready” e se o upstream (`web:8000`) está certo no nginx.conf
+
+* **Marca d’água minúscula no Linux**
+  → Já ajustado para **escala proporcional** (10–15% do rodapé). Se aparecer pequeno, confira se a foto é muito enorme (a compressão/resize está ativa).
+
+* **/vistoria/blocos/ aparentemente “vazio”**
+  → Verifique no admin:
+
+  1. Existe **1 inventário ativo**?
+  2. “**Incluir livros**” está do jeito que você quer?
+  3. Existem bens **não baixados**?
+  4. Acesse direto uma sala via `/vistoria/salas/id/<ID>/` para ver se a UI carrega (se sim, é escopo/contagem).
+
+---
+
+## Rollback / voltar versão no servidor
+
+> Voltar ao **último commit bom** já publicado:
+
+```bash
+ssh morales@servidor-web
+cd /srv/einventarioifce
+
+# Ver histórico e pegue o SHA "bom"
+git log --oneline -n 20
+
+# Resetar o working dir para o SHA "bom"
+git reset --hard <SHA_BOM>
+
+# Subir novamente
+docker compose up -d --build web nginx
+docker compose exec web python manage.py migrate --noinput
+docker compose exec web python manage.py collectstatic --noinput
+```
+
+> Para apenas **reverter um commit específico** mantendo o histórico linear:
+
+```bash
+git revert <SHA_PROBLEMATICO>
+git push origin main
+docker compose up -d --build web nginx
+```
+
+---
+
+# Configurações efetivas (como está no seu servidor)
+
+* **Repo**: `/srv/einventarioifce` (git remoto: `origin/main`)
+* **Compose**:
+
+  * `nginx` → **porta do host 8002**
+  * `web` (Gunicorn) → upstream de `nginx` (interno)
+  * `postgres` → volume persistente
+* **Cloudflare**:
+
+  * `/etc/cloudflared/config.yml` com:
+
+    ```yaml
+    tunnel: 28936bb7-cf74-428b-926a-73beef773192
+    credentials-file: /etc/cloudflared/28936bb7-cf74-428b-926a-73beef773192.json
+    ingress:
+      - hostname: einventario.morales.dev.br
+        service: http://127.0.0.1:8002
+      - service: http_status:404
+    ```
+  * systemd: `cloudflared-vm101-web.service` habilitado/rodando
+* **Domínio**: `https://einventario.morales.dev.br/` (CNAME/route já realizado)
+
+---
+
+# Mapa-resumo do que já foi feito (MVP 1.0)
+
+**Fundação**
+
+* Projeto Django criado e estruturado em apps (`core`, `patrimonio`, `importacao`, `vistoria`)
+* Admin com **Jazzmin** (tema **Yeti**)
+* Banco: **Postgres** (dev/prod), migrações aplicadas
+
+**Importação**
+
+* CSV do SUAP como fonte principal (UTF-8)
+* Cria/atualiza `Bem` por tombo (`NUMERO`)
+* Sincroniza `Sala` e **Bloco** a partir do campo “Sala” (último parêntese)
+* Feedback de importação (criadas/atualizadas/erros)
+
+**Inventário**
+
+* 1 inventário **Ativo** por vez (ano)
+* Escopo: exclui `BAIXADO`; inclui/exclui **livros** (`ED = 4490.52.18`) por flag
+
+**Vistoria (mobile-first)**
+
+* Navegação: **Blocos → Salas → Itens**
+* Na sala:
+
+  * **Não vistoriados** (primeiro)
+  * **Vistoriados (sem divergência)**
+  * **Vistoriados (com divergência)**
+  * **Não encontrados**
+  * **Encontrados em outra sala** (SUAP aqui, visto lá)
+  * **Cadastrados no SUAP em outra sala (vistoriados aqui)**
+  * **Extras** (itens sem registro; com foto)
+* Item:
+
+  * Conferências (descrição, nº série, local, estado, responsável)
+  * Divergência se qualquer “não confere”
+  * **Foto obrigatória** para ENCONTRADO (abre câmera no celular)
+  * **Marca d’água legível** (10–15% do rodapé): “ANO — TOMBO — DESCRIÇÃO”
+  * Nome do arquivo: `ANO_TOMBO.jpg` (ex.: `2025_611630.jpg`)
+  * NÃO ENCONTRADO **não** exige foto (reversível)
+
+**Deploy**
+
+* Docker: `web` (Gunicorn) + `nginx` + `postgres`
+* Cloudflare Tunnel mapeando domínio → `127.0.0.1:8002`
+* Pastas de `media/static` persistentes
+
+---
+
+# Resumo de “como não perder”
+
+* **Checklist antes de deploy**:
+
+  1. `git status` limpo?
+  2. `manage.py check` ok?
+  3. migração necessária criada?
+  4. commit & push.
+* **Deploy server**: `git reset --hard origin/main` → `docker compose up -d --build web nginx` → `migrate` → `collectstatic`.
+* **Cloudflared** não precisa tocar (já mapeado).
+* **Logs**: `docker compose logs -n 100 web|nginx|postgres` e `journalctl -u cloudflared-vm101-web.service -f`.
+* **Rollback**: reset para SHA bom + rebuild.
+
+se quiser, no próximo chat eu já te entrego um **scriptzinho “deploy.sh”** dentro de `/srv/einventarioifce` que roda o pull, build, migrate, collectstatic e checa logs em sequência (um atalho para 1-click deploy via SSH).

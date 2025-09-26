@@ -1,0 +1,58 @@
+{% extends "vistoria/base_vistoria.html" %}
+{% block title %}Item sem registro{% if sala %} — {{ sala.nome }}{% endif %}{% endblock %}
+
+{% block content %}
+  <div class="card" style="display:flex;gap:8px;align-items:center;justify-content:space-between;">
+    <div class="muted">
+      Item sem registro
+      {% if sala %} — Sala: <strong>{{ sala.nome }}</strong>{% endif %}
+    </div>
+
+    <div style="display:flex;gap:8px;">
+      {% if sala %}
+        <a class="btn" href="{% url 'vistoria_public:sala_workspace' sala_id=sala.id %}">
+          ← Voltar à sala
+        </a>
+      {% endif %}
+      <button type="button" class="btn"
+              onclick="if(history.length>1){history.back();}else{% if sala %}{window.location.href='{% url 'vistoria_public:sala_workspace' sala_id=sala.id %}'}{% else %}{window.location.href='/'}{% endif %}">
+        ← Voltar
+      </button>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="group-title">Item sem registro</div>
+
+    <p><strong>Descrição observada:</strong> {{ extra.descricao_obs|default:"(sem descrição)" }}</p>
+
+    {% if extra.numero_serie_obs %}
+      <p><strong>Nº de série:</strong> {{ extra.numero_serie_obs }}</p>
+    {% endif %}
+
+    {% if extra.estado_obs %}
+      <p><strong>Estado:</strong> {{ extra.estado_obs }}</p>
+    {% endif %}
+
+    {% if extra.responsavel_obs %}
+      <p><strong>Responsável:</strong> {{ extra.responsavel_obs }}</p>
+    {% endif %}
+
+    <p>
+      <strong>Etiqueta:</strong>
+      {% if extra.etiqueta_possui %}Sim{% else %}Não{% endif %}
+      {% if extra.etiqueta_condicao %} — {{ extra.etiqueta_condicao }}{% endif %}
+    </p>
+
+    {% if extra.observacoes %}
+      <p><strong>Observações:</strong> {{ extra.observacoes }}</p>
+    {% endif %}
+
+    {% if extra.foto_marcadagua %}
+      <div style="margin-top:12px;">
+        <img src="{{ extra.foto_marcadagua.url }}" alt="Foto do item sem registro"
+             style="max-width:100%;border-radius:12px;border:1px solid #e5e7eb;">
+      </div>
+    {% endif %}
+  </div>
+{% endblock %}
