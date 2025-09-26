@@ -112,10 +112,11 @@
   </form>
 
   <!-- FORM SEPARADO: NÃO ENCONTRADO (não sofre validação do input file) -->
-  <form method="post" action="{% url 'vistoria_public:nao_encontrado' sala_id=sala.id tombamento=bem.tombamento %}" style="margin-top:8px;">
+    <form method="post" action="{% url 'vistoria_public:marcar_nao_encontrado' sala_id=sala.id tombamento=bem.tombamento %}" style="margin-top:8px;">
     {% csrf_token %}
     <button class="btn" type="submit" formnovalidate>Marcar Não encontrado</button>
-  </form>
+    </form>
+
 
   <!-- FORM SEPARADO: EXCLUIR VISTORIA (também sem validar o file) -->
   {% if vistoria %}

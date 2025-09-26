@@ -67,6 +67,8 @@ git fetch --all
 git reset --hard origin/main
 # (ou: git pull --rebase)
 
+docker compose build web
+
 # 3) Subir containers
 #    - Se NÃO mudou dependência/sistema: apenas reinicie o web/nginx
 docker compose up -d web nginx
