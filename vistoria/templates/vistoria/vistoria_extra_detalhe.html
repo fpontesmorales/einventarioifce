@@ -1,58 +1,66 @@
 {% extends "vistoria/base_vistoria.html" %}
-{% block title %}Item sem registro{% if sala %} — {{ sala.nome }}{% endif %}{% endblock %}
+{% block title %}Item sem registro — {{ sala.nome }}{% endblock %}
 
 {% block content %}
-  <div class="card" style="display:flex;gap:8px;align-items:center;justify-content:space-between;">
-    <div class="muted">
-      Item sem registro
-      {% if sala %} — Sala: <strong>{{ sala.nome }}</strong>{% endif %}
-    </div>
-
-    <div style="display:flex;gap:8px;">
-      {% if sala %}
-        <a class="btn" href="{% url 'vistoria_public:sala_workspace' sala_id=sala.id %}">
-          ← Voltar à sala
-        </a>
-      {% endif %}
-      <button type="button" class="btn"
-              onclick="if(history.length>1){history.back();}else{% if sala %}{window.location.href='{% url 'vistoria_public:sala_workspace' sala_id=sala.id %}'}{% else %}{window.location.href='/'}{% endif %}">
-        ← Voltar
-      </button>
+  <div class="card">
+    <div class="row" style="justify-content:space-between;align-items:center;">
+      <div>
+        <div class="muted">Sala</div>
+        <div class="stat">{{ sala.nome }}</div>
+        <div class="muted">Bloco: {{ sala.bloco|default:"SEM BLOCO" }}</div>
+      </div>
+      <a class="btn" href="{% url 'vistoria_public:sala_workspace' sala_id=sala.id %}">← Voltar à sala</a>
     </div>
   </div>
 
-  <div class="card">
-    <div class="group-title">Item sem registro</div>
+  <div class="grid" style="grid-template-columns: 1fr; gap:12px;">
 
-    <p><strong>Descrição observada:</strong> {{ extra.descricao_obs|default:"(sem descrição)" }}</p>
+    <div class="card">
+      <h3 style="margin-top:0;">Dados do item sem registro</h3>
+      <div class="muted">Descrição observada</div>
+      <div class="stat">{{ extra.descricao_obs }}</div>
 
-    {% if extra.numero_serie_obs %}
-      <p><strong>Nº de série:</strong> {{ extra.numero_serie_obs }}</p>
-    {% endif %}
-
-    {% if extra.estado_obs %}
-      <p><strong>Estado:</strong> {{ extra.estado_obs }}</p>
-    {% endif %}
-
-    {% if extra.responsavel_obs %}
-      <p><strong>Responsável:</strong> {{ extra.responsavel_obs }}</p>
-    {% endif %}
-
-    <p>
-      <strong>Etiqueta:</strong>
-      {% if extra.etiqueta_possui %}Sim{% else %}Não{% endif %}
-      {% if extra.etiqueta_condicao %} — {{ extra.etiqueta_condicao }}{% endif %}
-    </p>
-
-    {% if extra.observacoes %}
-      <p><strong>Observações:</strong> {{ extra.observacoes }}</p>
-    {% endif %}
-
-    {% if extra.foto_marcadagua %}
-      <div style="margin-top:12px;">
-        <img src="{{ extra.foto_marcadagua.url }}" alt="Foto do item sem registro"
-             style="max-width:100%;border-radius:12px;border:1px solid #e5e7eb;">
+      <div class="grid" style="grid-template-columns: 1fr 1fr; gap:8px; margin-top:10px;">
+        <div>
+          <div class="muted">Nº de série</div>
+          <div>{{ extra.numero_serie_obs|default:"—" }}</div>
+        </div>
+        <div>
+          <div class="muted">Estado</div>
+          <div>{{ extra.estado_obs|default:"—" }}</div>
+        </div>
+        <div>
+          <div class="muted">Responsável</div>
+          <div>{{ extra.responsavel_obs|default:"—" }}</div>
+        </div>
+        <div>
+          <div class="muted">Etiqueta</div>
+          <div>
+            {% if extra.etiqueta_possui %}
+              Possui{% if extra.etiqueta_condicao %} — {{ extra.etiqueta_condicao }}{% endif %}
+            {% else %}
+              Não possui
+            {% endif %}
+          </div>
+        </div>
       </div>
-    {% endif %}
+
+      {% if extra.observacoes %}
+        <div style="margin-top:10px;">
+          <div class="muted">Observações</div>
+          <div>{{ extra.observacoes }}</div>
+        </div>
+      {% endif %}
+    </div>
+
+    <div class="card">
+      <h3 style="margin-top:0;">Foto</h3>
+      {% if extra.foto_marcadagua %}
+        <img src="{{ extra.foto_marcadagua.url }}" alt="Foto do item sem registro" style="max-width:100%; border-radius:12px; border:1px solid #e5e7eb;">
+      {% else %}
+        <div class="muted">Sem foto.</div>
+      {% endif %}
+    </div>
+
   </div>
 {% endblock %}

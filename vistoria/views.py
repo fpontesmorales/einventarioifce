@@ -501,6 +501,27 @@ def vistoria_extra_form(request, sala_id: int):
     }
     return render(request, "vistoria/vistoria_extra_form.html", ctx)
 
+@vistoriador_required
+def vistoria_extra_detalhe(request, sala_id: int, extra_id: int):
+    """
+    Detalhe de um item SEM REGISTRO (VistoriaExtra), validando:
+      - inventário ativo
+      - a sala da URL é a mesma salva no registro (nome/bloco)
+    """
+    inv = _require_inventario_ativo()
+    sala = get_object_or_404(Sala, id=sala_id)
+    extra = get_object_or_404(
+        VistoriaExtra,
+        id=extra_id,
+        inventario=inv,
+        sala_obs_nome=sala.nome,
+        sala_obs_bloco=sala.bloco,
+    )
+    return render(
+        request,
+        "vistoria/vistoria_extra_detalhe.html",
+        {"inventario": inv, "sala": sala, "extra": extra},
+    )
 
 # ======================== RELATÓRIOS (CSV) ========================
 @vistoriador_required
