@@ -1,3 +1,16 @@
+services:
+  postgres:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      - POSTGRES_DB
+      - POSTGRES_USER
+      - POSTGRES_PASSWORD
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    networks:
+      - einv-net
+
   web:
     build:
       context: ..
@@ -6,32 +19,70 @@
       - postgres
     working_dir: /app
     environment:
-      # --- Banco (copiados para dentro do web) ---
-      POSTGRES_DB: ${POSTGRES_DB}
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      # --- Django / proxy ---
+      - SECRET_KEY
+      - DEBUG
+      - ALLOWED_HOSTS
+      - CSRF_TRUSTED_ORIGINS
+      - TIME_ZONE
+      - USE_X_FORWARDED_HOST=1
 
-      # --- Formatos que o settings.py entende (DB_* e DATABASE_URL) ---
-      DB_HOST: postgres
-      DB_PORT: 5432
-      DB_NAME: ${POSTGRES_DB}
-      DB_USER: ${POSTGRES_USER}
-      DB_PASSWORD: ${POSTGRES_PASSWORD}
-      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      # --- Credenciais do banco (mesmos valores do Dokploy → Environment) ---
+      - POSTGRES_DB
+      - POSTGRES_USER
+      - POSTGRES_PASSWORD
 
-      # --- Fallback direto do driver psycopg (útil para manage.py) ---
-      PGHOST: postgres
-      PGPORT: 5432
-      PGDATABASE: ${POSTGRES_DB}
-      PGUSER: ${POSTGRES_USER}
-      PGPASSWORD: ${POSTGRES_PASSWORD}
+      # --- Formatos aceitos pelo settings.py ---
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_NAME
+      - DB_USER
+      - DB_PASSWORD
+      - DATABASE_URL
 
-      # --- Proxy/Django ---
-      USE_X_FORWARDED_HOST: "1"
-      # (os demais – SECRET_KEY, DEBUG, ALLOWED_HOSTS, etc. – ficam no Environment do Dokploy)
+      # --- Fallback direto para o driver (manage.py) ---
+      - PGHOST=postgres
+      - PGPORT=5432
+      - PGDATABASE
+      - PGUSER
+      - PGPASSWORD
+
+      # --- Caminhos (batem com os volumes) ---
+      - STATIC_ROOT=/app/staticfiles
+      - MEDIA_ROOT=/app/media
 
     command: ["gunicorn", "einventarioifce.wsgi:application", "--bind", "0.0.0.0:8000", "--workers", "3", "--timeout", "120"]
     volumes:
       - static_volume:/app/staticfiles
       - media_volume:/app/media
-    networks: [einv-net]
+    networks:
+      - einv-net
+
+  nginx:
+    image: nginx:1.27-alpine
+    depends_on:
+      - web
+    volumes:
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - static_volume:/static:ro
+      - media_volume:/media:ro
+    networks:
+      - einv-net
+      - dokploy-network
+    labels:
+      traefik.enable: "true"
+      traefik.http.routers.einventario.rule: "Host(`10.10.2.46`) || Host(`localhost`) || Host(`127.0.0.1`)"
+      traefik.http.routers.einventario.entrypoints: web
+      traefik.http.routers.einventario.service: einventario
+      traefik.http.services.einventario.loadbalancer.server.port: "80"
+
+volumes:
+  pg_data:
+  static_volume:
+  media_volume:
+
+networks:
+  einv-net:
+    driver: bridge
+  dokploy-network:
+    external: true
