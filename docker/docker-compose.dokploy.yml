@@ -82,31 +82,27 @@ services:
       - einv-net
       - dokploy-network
 
-    # >>> DEBUG opcional: acesso direto ao Nginx sem Traefik (retire depois se quiser)
+    # >>> BYPASS temporário para teste direto (sem Traefik). Remova quando a 80 estiver OK.
     ports:
       - "18080:80"
 
     labels:
       traefik.enable: "true"
 
-      # --- Regra ampla: aceita QUALQUER host e caminho ---
-      traefik.http.routers.einventario.rule: PathPrefix(`/`)
-      traefik.http.routers.einventario.entrypoints: web
-      traefik.http.routers.einventario.priority: "1"
+      # --- Regra super simples: combina QUALQUER caminho
+      traefik.http.routers.einv.rule: PathPrefix(`/`)
+      # Use ambos entrypoints, caso o Dokploy tenha nomes/padrões diferentes
+      traefik.http.routers.einv.entrypoints: web,websecure
+      # Não exigir TLS (como rodamos só HTTP interno)
+      traefik.http.routers.einv.tls: "false"
+      traefik.http.routers.einv.priority: "1"
 
-      # --- Service (porta do nginx no container) ---
-      traefik.http.routers.einventario.service: einventario
-      traefik.http.services.einventario.loadbalancer.server.port: "80"
+      # --- Aponta p/ este serviço Nginx e porta interna 80
+      traefik.http.routers.einv.service: einv
+      traefik.http.services.einv.loadbalancer.server.port: "80"
 
-      # --- Garanta a rede vista pelo Traefik ---
+      # --- Rede do Traefik (ajuste se no seu host o nome for outro)
       traefik.docker.network: dokploy-network
-
-      # --- ServersTransport (timeouts corretos p/ esta versão do Traefik) ---
-      traefik.http.services.einventario.loadbalancer.serversTransport: einv-transport
-      traefik.http.serversTransports.einv-transport.forwardingTimeouts.dialTimeout: "60s"
-      traefik.http.serversTransports.einv-transport.forwardingTimeouts.responseHeaderTimeout: "600s"
-      traefik.http.serversTransports.einv-transport.forwardingTimeouts.idleConnTimeout: "600s"
-      traefik.http.serversTransports.einv-transport.maxIdleConnsPerHost: "1024"
 
 volumes:
   pg_data:
