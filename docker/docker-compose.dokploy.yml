@@ -76,6 +76,13 @@ services:
       traefik.http.routers.einventario.service: einventario
       traefik.http.services.einventario.loadbalancer.server.port: "80"
 
+      # >>> timeouts Traefik → backend (10 min)
+      traefik.http.services.einventario.loadbalancer.serversTransport: einv-transport
+      traefik.http.serversTransports.einv-transport.forwardingTimeouts.readTimeout: 600s
+      traefik.http.serversTransports.einv-transport.forwardingTimeouts.writeTimeout: 600s
+      traefik.http.serversTransports.einv-transport.forwardingTimeouts.idleTimeout: 600s
+      
+
 volumes:
   pg_data:
   static_volume:
