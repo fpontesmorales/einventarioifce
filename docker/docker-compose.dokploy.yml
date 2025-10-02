@@ -10,24 +10,32 @@ services:
       - pg_data:/var/lib/postgresql/data
     networks:
       - einv-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB -h localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
 
   web:
     build:
       context: ..
       dockerfile: docker/Dockerfile
     depends_on:
-      - postgres
+      postgres:
+        condition: service_healthy
     working_dir: /app
     environment:
-      # --- Django / proxy ---
+      # --- Django / proxy / paths ---
       - SECRET_KEY
       - DEBUG
       - ALLOWED_HOSTS
       - CSRF_TRUSTED_ORIGINS
       - TIME_ZONE
       - USE_X_FORWARDED_HOST=1
+      - STATIC_ROOT=/app/staticfiles
+      - MEDIA_ROOT=/app/media
 
-      # --- Credenciais do banco (mesmos valores do Dokploy → Environment) ---
+      # --- Credenciais do banco (propagadas ao web) ---
       - POSTGRES_DB
       - POSTGRES_USER
       - POSTGRES_PASSWORD
@@ -47,11 +55,16 @@ services:
       - PGUSER
       - PGPASSWORD
 
-      # --- Caminhos (batem com os volumes) ---
-      - STATIC_ROOT=/app/staticfiles
-      - MEDIA_ROOT=/app/media
+      # --- Sem TLS interno ---
+      - SESSION_COOKIE_SECURE=0
+      - CSRF_COOKIE_SECURE=0
+      - SECURE_SSL_REDIRECT=0
 
-    command: ["gunicorn", "einventarioifce.wsgi:application", "--bind", "0.0.0.0:8000", "--workers", "3", "--timeout", "120"]
+    # gunicorn com folga para imports demorados
+    command: >-
+      sh -c "python manage.py migrate --noinput &&
+             python manage.py collectstatic --noinput &&
+             exec gunicorn einventarioifce.wsgi:application -b 0.0.0.0:8000 -w 3 --timeout 600"
     volumes:
       - static_volume:/app/staticfiles
       - media_volume:/app/media
@@ -69,26 +82,26 @@ services:
     networks:
       - einv-net
       - dokploy-network
-      
     labels:
       traefik.enable: "true"
 
-      # --- Regra ampla: aceita QUALQUER host e qualquer caminho
-      traefik.http.routers.einventario.rule: "HostRegexp(`{host:.+}`) && PathPrefix(`/`)"
+      # --- Rede ampla: aceita QUALQUER host, qualquer caminho ---
+      traefik.http.routers.einventario.rule: PathPrefix(`/`)
       traefik.http.routers.einventario.entrypoints: web
       traefik.http.routers.einventario.priority: "1"
 
-      # --- Service (porta do nginx dentro do container)
+      # --- Service (porta do nginx no container) ---
       traefik.http.routers.einventario.service: einventario
       traefik.http.services.einventario.loadbalancer.server.port: "80"
 
-      # --- Traefik → Nginx (timeouts folgados p/ import demorado)
+      # --- Use a rede certa do Traefik (evita 404 por rede errada) ---
+      traefik.docker.network: dokploy-network
+
+      # --- Timeouts Traefik → Nginx (10 min) ---
       traefik.http.services.einventario.loadbalancer.serversTransport: einv-transport
       traefik.http.serversTransports.einv-transport.forwardingTimeouts.readTimeout: 600s
       traefik.http.serversTransports.einv-transport.forwardingTimeouts.writeTimeout: 600s
       traefik.http.serversTransports.einv-transport.forwardingTimeouts.idleTimeout: 600s
-
-      
 
 volumes:
   pg_data:
