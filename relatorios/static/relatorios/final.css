@@ -1,0 +1,78 @@
+/* ----------------- layout básico ----------------- */
+.section {
+  background: #fff;
+  border: 1px solid #e3e3e3;
+  border-radius: 10px;
+  padding: 16px;
+  margin: 0 0 16px;
+  box-shadow: 0 1px 2px rgba(0,0,0,.03);
+}
+.fullwidth { width: 100%; }
+.num { text-align: right; }
+
+.cabecalho-wrap { display: flex; gap: 16px; align-items: center; }
+.cabecalho-titulos h1 { margin: 0 0 6px; }
+.logo { max-height: 80px; }
+
+/* ----------------- KPIs ----------------- */
+.kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 12px;
+}
+.kpi {
+  border: 1px solid #eaeaea;
+  border-radius: 10px;
+  padding: 10px 12px;
+  background: #fafbfe;
+}
+.kpi-emph { background: #f1f8ff; border-color: #dcecff; }
+.kpi-warn { background: #fff8e6; border-color: #ffe8b3; }
+.kpi-alert { background: #fff1f1; border-color: #ffd6d6; }
+.kpi-label { font-size: 12px; color: #666; }
+.kpi-value { font-size: 22px; font-weight: 700; }
+.kpi .sub { font-size: 12px; font-weight: 500; color: #888; margin-left: 6px; }
+
+/* ----------------- gráficos (barras CSS) ----------------- */
+.charts-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 12px;
+}
+.chart-card { border: 1px solid #eaeaea; border-radius: 10px; padding: 12px; background: #fff; }
+.barlst-title { margin: 0 0 8px; }
+.barlist { display: flex; flex-direction: column; gap: 8px; }
+.barrow { display: grid; grid-template-columns: 160px 1fr; gap: 8px; align-items: center; }
+.barlabel { font-size: 12px; color: #555; word-break: break-word; }
+.barwrap { position: relative; height: 18px; background: #f2f4f8; border-radius: 9px; overflow: hidden; border: 1px solid #e6e8ec; }
+.bar { position: absolute; left: 0; top: 0; bottom: 0; width: var(--w, 0%); background: #4a90e2; }
+.barpct { position: absolute; right: 6px; top: 0; bottom: 0; display: flex; align-items: center; font-size: 12px; color: #fff; text-shadow: 0 1px 1px rgba(0,0,0,.3); }
+
+/* ----------------- tabela ----------------- */
+table.listing { border-collapse: collapse; width: 100%; }
+table.listing th, table.listing td { border-bottom: 1px solid #eee; padding: 8px 10px; }
+table.listing thead th { background: #f8f9fb; font-weight: 600; }
+table.listing tbody tr:nth-child(odd) td { background: #fcfdff; }
+table.listing tr.total-row td { border-top: 2px solid #999; background: #f4f6fa; }
+
+/* ----------------- assinaturas ----------------- */
+table.assinaturas { width: 100%; }
+table.assinaturas td { padding: 18px 8px; }
+
+/* ----------------- configs ----------------- */
+.config summary { cursor: pointer; font-weight: 600; }
+.relatorios-sidebar { background: #fff; border: 1px solid #e3e3e3; border-radius: 10px; padding: 12px; }
+.relatorios-sidebar .btns { margin-top: 10px; display: flex; gap: 8px; }
+
+/* ----------------- impressão limpa ----------------- */
+@media print {
+  .no-print, header, nav, .breadcrumbs, .navbar, #jazzy-menu,
+  .brand-link, .sidebar, .main-header, .main-footer, footer,
+  .copyright, .copyright-text {
+    display: none !important;
+  }
+  body { margin: 0; }
+  .section { border: none; box-shadow: none; padding: 0; }
+  .kpi-grid { grid-template-columns: repeat(3, 1fr); gap: 8px; }
+  .charts-grid { grid-template-columns: 1fr 1fr; gap: 8px; }
+}

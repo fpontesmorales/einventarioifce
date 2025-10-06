@@ -63,6 +63,7 @@ INSTALLED_APPS = [
     "patrimonio",
     "importacao",
     "vistoria",
+    "relatorios",
 ]
 
 MIDDLEWARE = [
@@ -98,28 +99,22 @@ WSGI_APPLICATION = "einventarioifce.wsgi.application"
 # -----------------------------------------------------------------------------
 # Banco de dados (usa DATABASE_URL se presente; senão DB_*/POSTGRES_*/PG*)
 # -----------------------------------------------------------------------------
-DATABASE_URL = os.getenv("DATABASE_URL")
-if DATABASE_URL:
-    try:
-        import dj_database_url  # pip install dj-database-url (se ainda não estiver)
-        DATABASES = {
-            "default": dj_database_url.config(default=DATABASE_URL, conn_max_age=600)
-        }
-    except Exception:
-        # fallback mesmo com DATABASE_URL setado (caso lib não esteja instalada)
-        DATABASE_URL = None
+def _env(*keys, default=None):
+    """Retorna o primeiro valor de env que existir e não for '', senão default."""
+    for k in keys:
+        v = os.getenv(k)
+        if v not in (None, ""):
+            return v
+    return default
 
-if not DATABASE_URL:
-    DB_NAME = os.getenv("DB_NAME") or os.getenv("POSTGRES_DB", "einventario")
-    DB_USER = os.getenv("DB_USER") or os.getenv("POSTGRES_USER", "einventario")
-    DB_PASSWORD = (
-        os.getenv("DB_PASSWORD")
-        or os.getenv("POSTGRES_PASSWORD")
-        or os.getenv("PGPASSWORD", "")
-    )
-    DB_HOST = os.getenv("DB_HOST") or os.getenv("PGHOST", "postgres")
-    DB_PORT = os.getenv("DB_PORT") or os.getenv("PGPORT", "5432")
+# 1) Preferir variáveis explícitas (funciona no Dokploy e no .env local)
+DB_NAME = _env("DB_NAME", "POSTGRES_DB")
+DB_USER = _env("DB_USER", "POSTGRES_USER")
+DB_PASSWORD = _env("DB_PASSWORD", "POSTGRES_PASSWORD", "PGPASSWORD", default="")
+DB_HOST = _env("DB_HOST", "PGHOST")
+DB_PORT = _env("DB_PORT", "PGPORT", default="5432")
 
+if DB_NAME and DB_USER and DB_HOST:
     DATABASES = {
         "default": {
             "ENGINE": "django.db.backends.postgresql",
@@ -128,7 +123,29 @@ if not DATABASE_URL:
             "PASSWORD": DB_PASSWORD,
             "HOST": DB_HOST,
             "PORT": DB_PORT,
-            "CONN_MAX_AGE": 60,
+            "CONN_MAX_AGE": int(_env("DB_CONN_MAX_AGE", default="60")),
+        }
+    }
+else:
+    # 2) Se não veio DB_*, tentar DATABASE_URL (opcional; requer dj-database-url)
+    DATABASE_URL = os.getenv("DATABASE_URL")
+    if DATABASE_URL:
+        try:
+            import dj_database_url  # opcional; instale apenas se quiser usar DATABASE_URL
+            DATABASES = {
+                "default": dj_database_url.parse(DATABASE_URL, conn_max_age=600)
+            }
+        except Exception:
+            # Se não tiver a lib, cai no fallback abaixo
+            pass
+
+# 3) Fallback dev (não recomendado para produção; só para não quebrar o runserver)
+if "DATABASES" not in globals():
+    BASE_DIR = Path(__file__).resolve().parent.parent  # ajuste se diferente
+    DATABASES = {
+        "default": {
+            "ENGINE": "django.db.backends.sqlite3",
+            "NAME": str(BASE_DIR / "db.sqlite3"),
         }
     }
 
@@ -163,5 +180,33 @@ JAZZMIN_SETTINGS = {
     "site_header": "E-Inventário IFCE",
     "welcome_sign": "Bem-vindo ao E-Inventário",
     "show_ui_builder": False,
+
+    # Deixa a navegação expandida
+    "navigation_expanded": True,
+
+    # Atalhos no topo (header)
+    "topmenu_links": [
+        {"name": "Relatório Final", "url": "relatorios:final", "new_window": False, "permissions": []},
+        {"name": "Inventário por Conta", "url": "relatorios:inventario_por_conta", "new_window": False, "permissions": []},
+        {"name": "Mapa de NC", "url": "relatorios:mapa_nao_conformidades", "new_window": False, "permissions": []},
+    ],
+
+    # Links extras sob o app "relatorios" na sidebar
+    "custom_links": {
+        "relatorios": [
+            {"name": "Relatório Final", "url": "relatorios:final", "icon": "fas fa-print", "permissions": []},
+            {"name": "Inventário por Conta", "url": "relatorios:inventario_por_conta", "icon": "fas fa-table", "permissions": []},
+            {"name": "Mapa de NC", "url": "relatorios:mapa_nao_conformidades", "icon": "fas fa-exclamation-triangle", "permissions": []},
+        ],
+    },
+
+    # Ícones (opcional)
+    "icons": {
+        "relatorios.RelatorioConfig": "fa fa-cog",
+        "vistoria.Inventario": "fa fa-clipboard-check",
+        "vistoria.VistoriaBem": "fa fa-check-square",
+        "patrimonio.Bem": "fa fa-cube",
+    },
 }
 JAZZMIN_UI_TWEAKS = {"theme": "yeti"}
+

@@ -7,7 +7,7 @@ from django.views.generic import RedirectView
 urlpatterns = [
     # Página inicial do projeto → Vistoria (blocos)
     path("", RedirectView.as_view(pattern_name="vistoria_public:blocos", permanent=False), name="home"),
-
+    path('admin/relatorios/', include('relatorios.urls')), # << aqui
     path("admin/", admin.site.urls),
     path("vistoria/", include("vistoria.urls")),
 ]

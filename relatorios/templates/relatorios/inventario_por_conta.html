@@ -1,0 +1,45 @@
+{% extends "admin/base_site.html" %}
+{% load static %}
+{% block content %}
+  <div class="app-relatorios">
+    <h1>{{ title }}</h1>
+    <p><strong>SEI:</strong> {{ SEI }} &nbsp;|&nbsp; <strong>Portaria:</strong> {{ PORTARIA }} &nbsp;|&nbsp; <strong>Período:</strong> {{ PERIODO }}</p>
+    <p>
+      <a class="button" href="?export=csv">Exportar CSV</a>
+      <a class="button" href="/admin/relatorios/mapa-nao-conformidades/">Mapa de Não Conformidades</a>
+    </p>
+
+    <table class="listing" style="width:100%">
+      <thead>
+        <tr>
+          <th>Conta (código)</th>
+          <th>Conta (descrição)</th>
+          <th>Qtd Encontrados</th>
+          <th>Valor Encontrados (R$)</th>
+          <th>Qtd Não Encontrados</th>
+          <th>Valor Não Encontrados (R$)</th>
+          <th>Cobertura (%)</th>
+          <th>Qtd Divergentes</th>
+          <th>Valor Divergentes (R$)</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for l in linhas %}
+          <tr>
+            <td>{{ l.conta_codigo }}</td>
+            <td>{{ l.conta_desc }}</td>
+            <td style="text-align:right">{{ l.qtd_ok }}</td>
+            <td style="text-align:right">{{ l.val_ok|floatformat:2 }}</td>
+            <td style="text-align:right">{{ l.qtd_nao }}</td>
+            <td style="text-align:right">{{ l.val_nao|floatformat:2 }}</td>
+            <td style="text-align:right">{{ l.cobertura }}</td>
+            <td style="text-align:right">{{ l.qtd_div }}</td>
+            <td style="text-align:right">{{ l.val_div|floatformat:2 }}</td>
+          </tr>
+        {% empty %}
+          <tr><td colspan="9">Nenhum dado encontrado para o inventário ativo.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+{% endblock %}

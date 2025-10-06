@@ -1,0 +1,233 @@
+{% extends "admin/base_site.html" %}
+{% load static relatorio_extras %}
+{% block extrastyle %}
+<link rel="stylesheet" href="{% static 'relatorios/final.css' %}">
+{% endblock %}
+{% block content %}
+
+<main class="relatorios-main">
+  <!-- Cabeçalho -->
+  <section class="section cabecalho">
+    <div class="cabecalho-wrap">
+      {% if cfg and cfg.logo %}
+        <img src="{{ cfg.logo.url }}" alt="Logo" class="logo">
+      {% endif %}
+      <div class="cabecalho-titulos">
+        <h1>Inventário — Relatório Final</h1>
+        <div>IFCE – Campus Caucaia</div>
+        <div class="miolo">
+          <strong>SEI:</strong> {{ SEI }} &nbsp;|&nbsp;
+          <strong>Portaria:</strong> {{ PORTARIA }} &nbsp;|&nbsp;
+          <strong>Período:</strong> {{ PERIODO }}
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Textos explicativos -->
+  {% if cfg and cfg.texto_apresentacao %}
+  <section class="section">
+    <h2>Apresentação</h2>
+    <p style="white-space: pre-wrap;">{% render_vars cfg.texto_apresentacao %}</p>
+  </section>
+  {% endif %}
+
+  {% if cfg and cfg.texto_metodologia %}
+  <section class="section">
+    <h2>Metodologia</h2>
+    <p style="white-space: pre-wrap;">{% render_vars cfg.texto_metodologia %}</p>
+  </section>
+  {% endif %}
+
+  <!-- Diagnóstico em números -->
+  <section class="section">
+    <h2>Diagnóstico em números</h2>
+
+    <!-- KPIs -->
+    {% if kpis %}
+    <div class="kpi-grid" style="margin-top:12px;">
+      <div class="kpi"><div class="kpi-label">SUAP (itens)</div><div class="kpi-value">{{ kpis.suap_itens }}</div></div>
+      <div class="kpi"><div class="kpi-label">SUAP (R$)</div><div class="kpi-value">{{ kpis.suap_valor|br_currency }}</div></div>
+      <div class="kpi"><div class="kpi-label">Vistoriados</div><div class="kpi-value">{{ kpis.vist_itens }}</div></div>
+      <div class="kpi kpi-emph"><div class="kpi-label">Cobertura</div><div class="kpi-value">{{ kpis.cobertura|br_percent }}</div></div>
+      <div class="kpi"><div class="kpi-label">Encontrados</div><div class="kpi-value">{{ kpis.ok_itens }} <span class="sub">({{ kpis.ok_valor|br_currency }})</span></div></div>
+      <div class="kpi kpi-alert"><div class="kpi-label">Não encontrados</div><div class="kpi-value">{{ kpis.nao_itens }} <span class="sub">({{ kpis.nao_valor|br_currency }})</span></div></div>
+      <div class="kpi kpi-warn"><div class="kpi-label">Divergentes</div><div class="kpi-value">{{ kpis.div_itens }} <span class="sub">({{ kpis.div_valor|br_currency }})</span></div></div>
+    </div>
+    {% else %}
+      <p>Sem dados para o inventário ativo.</p>
+    {% endif %}
+
+    <!-- Gráficos (barras HTML/SVG) -->
+    <div class="charts-grid" style="margin-top:16px;">
+      <div class="chart-card">
+        <h3>Cobertura por Conta (top 12)</h3>
+        {% if graficos.cobertura_por_conta %}
+          <div class="barlist">
+            {% for it in graficos.cobertura_por_conta %}
+              <div class="barrow">
+                <span class="barlabel">{{ it.conta }}</span>
+                <span class="barwrap">
+                  <span class="bar" style="--w: {{ it.cobertura }}%;"></span>
+                  <span class="barpct">{{ it.cobertura|floatformat:1 }}%</span>
+                </span>
+              </div>
+            {% endfor %}
+          </div>
+        {% else %}
+          <p>Sem contas para exibir.</p>
+        {% endif %}
+      </div>
+
+      <div class="chart-card">
+        <h3>Top 5 tipos de divergência</h3>
+        {% if graficos.top_tipos %}
+          <div class="barlist">
+            {% for it in graficos.top_tipos %}
+              {% if it.rotulo and it.rotulo|lower != 'divergência (não classificada)' %}
+              <div class="barrow">
+                <span class="barlabel">{{ it.rotulo }}</span>
+                <span class="barwrap">
+                  <span class="bar" style="--w: calc( ({{ it.qtd }} / {{ graficos.top_tipos.0.qtd|default:1 }}) * 100% );"></span>
+                  <span class="barpct">{{ it.qtd }}</span>
+                </span>
+              </div>
+              {% endif %}
+            {% endfor %}
+          </div>
+        {% else %}
+          <p>Sem divergências registradas.</p>
+        {% endif %}
+      </div>
+
+      <div class="chart-card">
+        <h3>Top 5 blocos com pendências</h3>
+        {% if graficos.top_blocos %}
+          <div class="barlist">
+            {% for it in graficos.top_blocos %}
+              <div class="barrow">
+                <span class="barlabel">{{ it.bloco|default:"(sem identificação)" }}</span>
+                <span class="barwrap">
+                  <span class="bar" style="--w: calc( ({{ it.qtd }} / {{ graficos.top_blocos.0.qtd|default:1 }}) * 100% );"></span>
+                  <span class="barpct">{{ it.qtd }}</span>
+                </span>
+              </div>
+            {% endfor %}
+          </div>
+        {% else %}
+          <p>Sem pendências por bloco.</p>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- Quadro por conta (tabela) -->
+    <div style="margin-top:16px;">
+      <h3>Quadro por Conta Contábil</h3>
+      <table class="listing fullwidth">
+        <thead>
+          <tr>
+            <th>Conta</th>
+            <th>Total SUAP</th>
+            <th>Vistoriados</th>
+            <th>Cobertura</th>
+            <th>Encontrados</th>
+            <th>Valor Encontrados (R$)</th>
+            <th>Não encontrados</th>
+            <th>Valor Não encontrados (R$)</th>
+            <th>Divergentes</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for l in linhas %}
+            <tr>
+              <td>{{ l.conta_codigo }}</td>
+              <td class="num">{{ l.qtd_total }}</td>
+              <td class="num">{{ l.qtd_vist }}</td>
+              <td class="num">{{ l.cobertura|br_percent }}</td>
+              <td class="num">{{ l.qtd_ok }}</td>
+              <td class="num">{{ l.val_ok|br_currency }}</td>
+              <td class="num">{{ l.qtd_nao }}</td>
+              <td class="num">{{ l.val_nao|br_currency }}</td>
+              <td class="num">{{ l.qtd_div }}</td>
+            </tr>
+          {% empty %}
+            <tr><td colspan="9">Sem dados.</td></tr>
+          {% endfor %}
+          {% if total_row %}
+            <tr class="total-row">
+              <td><strong>{{ total_row.conta_codigo }}</strong></td>
+              <td class="num"><strong>{{ total_row.qtd_total }}</strong></td>
+              <td class="num"><strong>{{ total_row.qtd_vist }}</strong></td>
+              <td class="num"><strong>{{ total_row.cobertura|br_percent }}</strong></td>
+              <td class="num"><strong>{{ total_row.qtd_ok }}</strong></td>
+              <td class="num"><strong>{{ total_row.val_ok|br_currency }}</strong></td>
+              <td class="num"><strong>{{ total_row.qtd_nao }}</strong></td>
+              <td class="num"><strong>{{ total_row.val_nao|br_currency }}</strong></td>
+              <td class="num"><strong>{{ total_row.qtd_div }}</strong></td>
+            </tr>
+          {% endif %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- Encaminhamentos e Plano de Ação -->
+  {% if cfg and cfg.texto_conclusao %}
+  <section class="section">
+    <h2>Encaminhamentos e Plano de Ação</h2>
+    <p style="white-space: pre-wrap;">{% render_vars cfg.texto_conclusao %}</p>
+  </section>
+  {% endif %}
+
+  <!-- Assinaturas -->
+  {% if cfg and cfg.assinantes %}
+  <section class="section">
+    <h2>Assinaturas</h2>
+    <table class="assinaturas">
+      <tbody>
+        {% for a in cfg.assinantes %}
+        <tr>
+          <td>
+            <div>______________________________________________</div>
+            <div><strong>{{ a.nome }}</strong></div>
+            <div>{{ a.cargo }}</div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </section>
+  {% endif %}
+</main>
+
+<!-- Configurações (recolhidas; somem na impressão) -->
+{% if form %}
+<details class="config no-print">
+  <summary>Editar configurações do relatório</summary>
+  <div class="relatorios-sidebar">
+    <form method="post" enctype="multipart/form-data">
+      {% csrf_token %}
+      <div><strong>Brasão/Logo</strong><br>
+        {% if cfg.logo %}<img src="{{ cfg.logo.url }}" alt="Logo" style="max-width:220px; margin:6px 0;">{% endif %}
+        {{ form.logo }}
+      </div>
+      <hr>
+      <div><strong>Apresentação</strong>{{ form.texto_apresentacao }}</div>
+      <div><strong>Metodologia</strong>{{ form.texto_metodologia }}</div>
+      <div><strong>Conclusão / Plano de Ação</strong>{{ form.texto_conclusao }}</div>
+      <div>{{ form.assinantes_lista.label_tag }} {{ form.assinantes_lista }} <small>{{ form.assinantes_lista.help_text }}</small></div>
+      <hr>
+      <div>{{ form.incluir_mapa_nc }} Incluir Mapa de NC (resumo)</div>
+      <div>{{ form.incluir_sem_registro }} Incluir Bens Sem Registro (resumo)</div>
+      <div>{{ form.ocultar_contas_zeradas }} (aplica-se aos anexos detalhados)</div>
+      <div>Ordenar anexos: {{ form.ordenar_anexos }}</div>
+      <div class="btns">
+        <button class="button" type="submit">Salvar configurações</button>
+        <a class="button" href="#" onclick="window.print();return false;">Imprimir / Salvar como PDF</a>
+      </div>
+    </form>
+  </div>
+</details>
+{% endif %}
+
+{% endblock %}
