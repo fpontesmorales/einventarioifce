@@ -39,27 +39,68 @@
   </section>
   {% endif %}
 
-  <!-- Diagnóstico em números -->
+  <!-- Resultados -->
   <section class="section">
-    <h2>Diagnóstico em números</h2>
+    <h2>Resultados</h2>
 
-    <!-- KPIs -->
+    <!-- Legenda e contagens de pendências -->
+    <div class="legend">
+      <div class="legend-row">
+        <span class="badge badge-p1">Pendências críticas (P1): <strong>{{ sumarios.sum_p.p1 }}</strong></span>
+        <span class="badge badge-p2">Pendências altas (P2): <strong>{{ sumarios.sum_p.p2 }}</strong></span>
+        <span class="badge badge-p3">Pendências médias (P3): <strong>{{ sumarios.sum_p.p3 }}</strong></span>
+        <span class="badge badge-neutral">Sem registro no SUAP: <strong>{{ sumarios.no_registro }}</strong></span>
+      </div>
+      <div class="legend-help">
+        P1 = Não encontrados, Tombamento, Etiqueta ausente ·
+        P2 = Localização, Série, Responsável ·
+        P3 = Descrição, Marca/Modelo, Estado
+      </div>
+    </div>
+
+    <!-- KPIs (3x2) -->
     {% if kpis %}
-    <div class="kpi-grid" style="margin-top:12px;">
-      <div class="kpi"><div class="kpi-label">SUAP (itens)</div><div class="kpi-value">{{ kpis.suap_itens }}</div></div>
-      <div class="kpi"><div class="kpi-label">SUAP (R$)</div><div class="kpi-value">{{ kpis.suap_valor|br_currency }}</div></div>
-      <div class="kpi"><div class="kpi-label">Vistoriados</div><div class="kpi-value">{{ kpis.vist_itens }}</div></div>
-      <div class="kpi kpi-emph"><div class="kpi-label">Cobertura</div><div class="kpi-value">{{ kpis.cobertura|br_percent }}</div></div>
-      <div class="kpi"><div class="kpi-label">Encontrados</div><div class="kpi-value">{{ kpis.ok_itens }} <span class="sub">({{ kpis.ok_valor|br_currency }})</span></div></div>
-      <div class="kpi kpi-alert"><div class="kpi-label">Não encontrados</div><div class="kpi-value">{{ kpis.nao_itens }} <span class="sub">({{ kpis.nao_valor|br_currency }})</span></div></div>
-      <div class="kpi kpi-warn"><div class="kpi-label">Divergentes</div><div class="kpi-value">{{ kpis.div_itens }} <span class="sub">({{ kpis.div_valor|br_currency }})</span></div></div>
+    <div class="kpi-grid">
+      <div class="kpi kpi-alert">
+        <div class="kpi-label">Não encontrados</div>
+        <div class="kpi-value">{{ kpis.nao_itens }} <span class="sub">({{ kpis.nao_valor|br_currency }})</span></div>
+      </div>
+      <div class="kpi kpi-emph">
+        <div class="kpi-label">Cobertura</div>
+        <div class="kpi-value">{{ kpis.cobertura|br_percent }}</div>
+      </div>
+      <div class="kpi">
+        <div class="kpi-label">Vistoriados</div>
+        <div class="kpi-value">{{ kpis.vist_itens }}</div>
+      </div>
+      <div class="kpi kpi-warn">
+        <div class="kpi-label">Divergentes</div>
+        <div class="kpi-value">{{ kpis.div_itens }} <span class="sub">({{ kpis.div_valor|br_currency }})</span></div>
+      </div>
+      <div class="kpi">
+        <div class="kpi-label">SUAP (itens)</div>
+        <div class="kpi-value">{{ kpis.suap_itens }}</div>
+      </div>
+      <div class="kpi">
+        <div class="kpi-label">SUAP (R$)</div>
+        <div class="kpi-value">{{ kpis.suap_valor|br_currency }}</div>
+      </div>
     </div>
     {% else %}
       <p>Sem dados para o inventário ativo.</p>
     {% endif %}
 
-    <!-- Gráficos (barras HTML/SVG) -->
-    <div class="charts-grid" style="margin-top:16px;">
+    <!-- Aviso de amostragem baixa -->
+    {% if kpis and kpis.cobertura < 5 %}
+      <div class="banner-info">
+        Cobertura preliminar (&lt; 5%). Gráficos sintéticos serão exibidos quando houver amostra suficiente.
+      </div>
+    {% endif %}
+
+    <!-- Gráficos (somente se cobertura >= 5%) -->
+    {% if kpis and kpis.cobertura >= 5 %}
+    <div class="charts-grid">
+      <!-- Cobertura por conta -->
       <div class="chart-card">
         <h3>Cobertura por Conta (top 12)</h3>
         {% if graficos.cobertura_por_conta %}
@@ -68,27 +109,52 @@
               <div class="barrow">
                 <span class="barlabel">{{ it.conta }}</span>
                 <span class="barwrap">
-                  <span class="bar" style="--w: {{ it.cobertura }}%;"></span>
+                  <span class="bar" style="width: {{ it.cobertura|floatformat:1 }}%;"></span>
                   <span class="barpct">{{ it.cobertura|floatformat:1 }}%</span>
                 </span>
               </div>
             {% endfor %}
           </div>
         {% else %}
-          <p>Sem contas para exibir.</p>
+          <p class="muted">Sem contas para exibir.</p>
         {% endif %}
       </div>
 
+      <!-- Top 5 tipos -->
       <div class="chart-card">
         <h3>Top 5 tipos de divergência</h3>
-        {% if graficos.top_tipos %}
+        {% if graficos.top_tipos and graficos.top_tipos.0.qtd %}
           <div class="barlist">
             {% for it in graficos.top_tipos %}
               {% if it.rotulo and it.rotulo|lower != 'divergência (não classificada)' %}
+                {% widthratio it.qtd graficos.top_tipos.0.qtd 100 as pct %}
+                <div class="barrow">
+                  <span class="barlabel">{{ it.rotulo }}</span>
+                  <span class="barwrap">
+                    <span class="bar" style="width: {{ pct }}%;"></span>
+                    <span class="barpct">{{ it.qtd }}</span>
+                  </span>
+                </div>
+              {% endif %}
+            {% endfor %}
+          </div>
+        {% else %}
+          <p class="muted">Sem divergências suficientes para exibir.</p>
+        {% endif %}
+      </div>
+
+      <!-- Top 5 blocos -->
+      <div class="chart-card">
+        <h3>Top 5 blocos com pendências</h3>
+        {% if graficos.top_blocos and graficos.top_blocos.0.qtd %}
+          <div class="barlist">
+            {% for it in graficos.top_blocos %}
+              {% widthratio it.qtd graficos.top_blocos.0.qtd 100 as pctb %}
+              {% if it.bloco and it.bloco != '—' %}
               <div class="barrow">
-                <span class="barlabel">{{ it.rotulo }}</span>
+                <span class="barlabel">{{ it.bloco|default:"(sem identificação)" }}</span>
                 <span class="barwrap">
-                  <span class="bar" style="--w: calc( ({{ it.qtd }} / {{ graficos.top_tipos.0.qtd|default:1 }}) * 100% );"></span>
+                  <span class="bar" style="width: {{ pctb }}%;"></span>
                   <span class="barpct">{{ it.qtd }}</span>
                 </span>
               </div>
@@ -96,51 +162,37 @@
             {% endfor %}
           </div>
         {% else %}
-          <p>Sem divergências registradas.</p>
-        {% endif %}
-      </div>
-
-      <div class="chart-card">
-        <h3>Top 5 blocos com pendências</h3>
-        {% if graficos.top_blocos %}
-          <div class="barlist">
-            {% for it in graficos.top_blocos %}
-              <div class="barrow">
-                <span class="barlabel">{{ it.bloco|default:"(sem identificação)" }}</span>
-                <span class="barwrap">
-                  <span class="bar" style="--w: calc( ({{ it.qtd }} / {{ graficos.top_blocos.0.qtd|default:1 }}) * 100% );"></span>
-                  <span class="barpct">{{ it.qtd }}</span>
-                </span>
-              </div>
-            {% endfor %}
-          </div>
-        {% else %}
-          <p>Sem pendências por bloco.</p>
+          <p class="muted">Sem pendências por bloco para exibir.</p>
         {% endif %}
       </div>
     </div>
+    {% endif %}
 
     <!-- Quadro por conta (tabela) -->
-    <div style="margin-top:16px;">
+    <div class="mt-16">
       <h3>Quadro por Conta Contábil</h3>
       <table class="listing fullwidth">
         <thead>
           <tr>
             <th>Conta</th>
-            <th>Total SUAP</th>
-            <th>Vistoriados</th>
-            <th>Cobertura</th>
-            <th>Encontrados</th>
-            <th>Valor Encontrados (R$)</th>
-            <th>Não encontrados</th>
-            <th>Valor Não encontrados (R$)</th>
-            <th>Divergentes</th>
+            <th class="num">Total SUAP</th>
+            <th class="num">Vistoriados</th>
+            <th class="num">Cobertura</th>
+            <th class="num">Encontrados</th>
+            <th class="num">Valor OK (R$)</th>
+            <th class="num">Não-enc.</th>
+            <th class="num">Valor Não-enc. (R$)</th>
+            <th class="num">Divergentes</th>
+            <th class="num">Valor Div. (R$)</th>
+            <th class="num">Valor total (R$)</th>
+            <th class="num">% Não-enc.</th>
           </tr>
         </thead>
         <tbody>
           {% for l in linhas %}
+            {% widthratio l.qtd_nao l.qtd_total 100 as pct_nao %}
             <tr>
-              <td>{{ l.conta_codigo }}</td>
+              <td class="mono nowrap">{{ l.conta_codigo }}</td>
               <td class="num">{{ l.qtd_total }}</td>
               <td class="num">{{ l.qtd_vist }}</td>
               <td class="num">{{ l.cobertura|br_percent }}</td>
@@ -149,11 +201,15 @@
               <td class="num">{{ l.qtd_nao }}</td>
               <td class="num">{{ l.val_nao|br_currency }}</td>
               <td class="num">{{ l.qtd_div }}</td>
+              <td class="num">{{ l.val_div|br_currency }}</td>
+              <td class="num">{{ l.val_ok|add:l.val_nao|add:l.val_div|br_currency }}</td>
+              <td class="num">{{ pct_nao }}%</td>
             </tr>
           {% empty %}
-            <tr><td colspan="9">Sem dados.</td></tr>
+            <tr><td colspan="12">Sem dados.</td></tr>
           {% endfor %}
           {% if total_row %}
+            {% widthratio total_row.qtd_nao total_row.qtd_total 100 as pct_nao_total %}
             <tr class="total-row">
               <td><strong>{{ total_row.conta_codigo }}</strong></td>
               <td class="num"><strong>{{ total_row.qtd_total }}</strong></td>
@@ -164,11 +220,97 @@
               <td class="num"><strong>{{ total_row.qtd_nao }}</strong></td>
               <td class="num"><strong>{{ total_row.val_nao|br_currency }}</strong></td>
               <td class="num"><strong>{{ total_row.qtd_div }}</strong></td>
+              <td class="num"><strong>{{ total_row.val_div|br_currency }}</strong></td>
+              <td class="num"><strong>{{ total_row.val_ok|add:total_row.val_nao|add:total_row.val_div|br_currency }}</strong></td>
+              <td class="num"><strong>{{ pct_nao_total }}%</strong></td>
             </tr>
           {% endif %}
         </tbody>
       </table>
     </div>
+
+    <!-- Checklist agregado (vistoriados) + Tops de "não encontrados" -->
+    {% if sumarios.checklist %}
+    <div class="grid-2 mt-16">
+      <div class="panel-card">
+        <h3>Checklist (somente vistoriados)</h3>
+        <p class="legend-help">NI (não vistoriado) foi excluído desta tabela para evidenciar o comparativo Confere × Divergente.</p>
+        <table class="listing fullwidth compact">
+          <thead>
+            <tr>
+              <th>Item</th>
+              <th class="num">Confere</th>
+              <th class="num">Divergente</th>
+              <th class="num">% Diverg.</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for label, vals in sumarios.checklist.items %}
+              {% with total_vist=vals.confere|add:vals.diverge %}
+              <tr>
+                <td>{{ label }}</td>
+                <td class="num">{{ vals.confere }}</td>
+                <td class="num">{{ vals.diverge }}</td>
+                {% if total_vist > 0 %}
+                  {% widthratio vals.diverge total_vist 100 as pct_div %}
+                  <td class="num">{{ pct_div }}%</td>
+                {% else %}
+                  <td class="num">—</td>
+                {% endif %}
+              </tr>
+              {% endwith %}
+            {% endfor %}
+          </tbody>
+        </table>
+        <p class="muted mt-6">NI = não vistoriado (apresentado no KPI de cobertura).</p>
+      </div>
+
+      <div class="panel-card">
+        <h3>Não encontrados — Top 5</h3>
+        <div class="grid-2-tight">
+          <div>
+            <h4>por Conta</h4>
+            {% if sumarios.top_nao_contas %}
+              <div class="barlist">
+                {% for it in sumarios.top_nao_contas %}
+                  {% widthratio it.qtd sumarios.top_nao_contas.0.qtd 100 as pn %}
+                  <div class="barrow">
+                    <span class="barlabel">{{ it.conta }}</span>
+                    <span class="barwrap">
+                      <span class="bar" style="width: {{ pn }}%;"></span>
+                      <span class="barpct">{{ it.qtd }}</span>
+                    </span>
+                  </div>
+                {% endfor %}
+              </div>
+            {% else %}
+              <p class="muted">Sem dados.</p>
+            {% endif %}
+          </div>
+          <div>
+            <h4>por Bloco</h4>
+            {% if sumarios.top_nao_blocos %}
+              <div class="barlist">
+                {% for it in sumarios.top_nao_blocos %}
+                  {% widthratio it.qtd sumarios.top_nao_blocos.0.qtd 100 as pb %}
+                  <div class="barrow">
+                    <span class="barlabel">{{ it.bloco }}</span>
+                    <span class="barwrap">
+                      <span class="bar" style="width: {{ pb }}%;"></span>
+                      <span class="barpct">{{ it.qtd }}</span>
+                    </span>
+                  </div>
+                {% endfor %}
+              </div>
+            {% else %}
+              <p class="muted">Sem dados.</p>
+            {% endif %}
+          </div>
+        </div>
+      </div>
+    </div>
+    {% endif %}
+
   </section>
 
   <!-- Encaminhamentos e Plano de Ação -->

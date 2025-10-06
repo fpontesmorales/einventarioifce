@@ -14,6 +14,37 @@ from .utils import (
     coletar_divergencias, diferencas_detalhadas, export_csv,
 )
 
+# Suporte opcional à configuração persistida do Relatório Final
+try:
+    from .models import RelatorioConfig
+    from .forms import RelatorioConfigForm
+except Exception:
+    RelatorioConfig = None
+    RelatorioConfigForm = None
+
+# Opcional: pode não existir no projeto — tratamos com tolerância
+try:
+    from vistoria.models import VistoriaExtra  # “bens sem registro”
+except Exception:
+    VistoriaExtra = None
+
+
+# --------------------------------------------------------------------------------------
+# Helpers de contexto / localização
+# --------------------------------------------------------------------------------------
+def _admin_ctx(request: HttpRequest, extra: dict):
+    ctx = admin_site.each_context(request)
+    ctx.update(extra)
+    ctx.setdefault('SEI', SEI)
+    ctx.setdefault('PORTARIA', PORTARIA)
+    ctx.setdefault('PERIODO', PERIODO)
+    return ctx
+
+
+def _inventario_ativo():
+    return Inventario.objects.filter(ativo=True).order_by('-ano').first()
+
+
 def _nome_bloco(obj):
     # tenta sala.bloco.nome/descricao
     sala = getattr(obj, "sala", None) or getattr(obj, "sala_atual", None)
@@ -23,15 +54,19 @@ def _nome_bloco(obj):
     # tenta texto solto
     return getattr(obj, "bloco_nome", None) or getattr(obj, "predio", None) or ""
 
+
 def _nome_sala(obj):
     sala = getattr(obj, "sala", None) or getattr(obj, "sala_atual", None)
     if sala:
         return getattr(sala, "nome", None) or getattr(sala, "descricao", None) or str(sala)
     return getattr(obj, "sala_nome", None) or getattr(obj, "local", None) or ""
 
+
+# --------------------------------------------------------------------------------------
+# Top listas usadas nos gráficos
+# --------------------------------------------------------------------------------------
 def _top_tipos_divergencia(inv, vb_qs):
     """Top 5 tipos de divergência (exclui 'não encontrado' e QUALQUER etiqueta que não seja 'etiqueta (ausente)')."""
-    from .utils import coletar_divergencias  # lazy import
     cont = defaultdict(int)
     for vb in vb_qs:
         tipos = coletar_divergencias(vb) or []
@@ -47,12 +82,12 @@ def _top_tipos_divergencia(inv, vb_qs):
     pares = sorted(cont.items(), key=lambda kv: (-kv[1], kv[0]))[:5]
     return [{"rotulo": k, "qtd": v} for k, v in pares]
 
+
 def _top_blocos_pendencias(inv, bens_qs, vb_map):
     """
     Top 5 blocos com pendências (não encontrados + divergentes).
     Usa o BLOCO do SUAP (Bem) para consistência gerencial.
     """
-    from .utils import is_encontrado, is_nao_encontrado, coletar_divergencias
     pend = defaultdict(int)
     for bem in bens_qs:
         vb = vb_map.get(bem.id)
@@ -79,41 +114,10 @@ def _top_blocos_pendencias(inv, bens_qs, vb_map):
     pares = sorted(pend.items(), key=lambda kv: (-kv[1], kv[0]))[:5]
     return [{"bloco": k, "qtd": v} for k, v in pares]
 
-# Suporte opcional à configuração persistida do Relatório Final
-try:
-    from .models import RelatorioConfig
-    from .forms import RelatorioConfigForm
-except Exception:
-    RelatorioConfig = None
-    RelatorioConfigForm = None
 
-# Opcional: pode não existir no projeto — tratamos com tolerância
-try:
-    from vistoria.models import VistoriaExtra  # “bens sem registro”
-except Exception:
-    VistoriaExtra = None
-
-
-def _admin_ctx(request: HttpRequest, extra: dict):
-    ctx = admin_site.each_context(request)
-    ctx.update(extra)
-    ctx.setdefault('SEI', SEI)
-    ctx.setdefault('PORTARIA', PORTARIA)
-    ctx.setdefault('PERIODO', PERIODO)
-    return ctx
-
-
-def _inventario_ativo():
-    return Inventario.objects.filter(ativo=True).order_by('-ano').first()
-
-
-def index(request: HttpRequest):
-    return redirect('relatorios:final')
-
-
-# -----------------------------
-# Agregação por conta (base: Bens/SUAP) – já corrigida
-# -----------------------------
+# --------------------------------------------------------------------------------------
+# Agregação por conta (base: Bens/SUAP) – consolidado (itens e valores por status)
+# --------------------------------------------------------------------------------------
 def _agrega_por_conta_base_bem(inv: Inventario):
     bens_qs = Bem.objects.all()
     vb_qs = VistoriaBem.objects.select_related('bem').filter(inventario=inv)
@@ -202,85 +206,121 @@ def _agrega_por_conta_base_bem(inv: Inventario):
     return linhas, total_row
 
 
-# -----------------------------
-# RESUMOS – Mapa de NC e Sem Registro
-# -----------------------------
-def _resumo_nc(inv: Inventario):
-    """Resumo enxuto do Mapa de NC: total de bens com NC e top 5 tipos."""
+# --------------------------------------------------------------------------------------
+# Sumários (P1/P2/P3, checklist agregado, “sem registro”, tops de não encontrados)
+# --------------------------------------------------------------------------------------
+def _calc_sumarios(inv: Inventario):
+    """
+    Retorna:
+      - sum_p: {'p1': int, 'p2': int, 'p3': int}
+      - no_registro: int (VistoriaExtra, se existir)
+      - checklist: dict por tipo (Localização/Série/Responsável/Descrição/Marca-Modelo/Tombamento/Etiqueta)
+                  com confere/diverge/na/ni
+      - top_nao_contas: [{'conta': '123..', 'qtd': N}, ...]
+      - top_nao_blocos: [{'bloco': 'X', 'qtd': N}, ...]
+    """
     if not inv:
-        return {'total_bens': 0, 'total_registros': 0, 'top_tipos': []}
+        return {
+            "sum_p": {"p1": 0, "p2": 0, "p3": 0},
+            "no_registro": 0,
+            "checklist": {},
+            "top_nao_contas": [],
+            "top_nao_blocos": [],
+        }
 
-    qs = VistoriaBem.objects.select_related('bem').filter(inventario=inv)
-    por_tipo = defaultdict(int)
-    total_bens = 0
+    vb_qs = VistoriaBem.objects.select_related('bem').filter(inventario=inv)
+    bens_qs = Bem.objects.all()
+    vb_map = {vb.bem_id: vb for vb in vb_qs}
 
-    for vb in qs:
-        if not is_divergente(vb):
+    # ---------------- P1/P2/P3 por ITEM ----------------
+    p1 = p2 = p3 = 0
+    for bem in bens_qs:
+        vb = vb_map.get(bem.id)
+        if not vb or is_nao_encontrado(vb):
+            p1 += 1  # não vistoriado/nao encontrado entra em P1
             continue
-        total_bens += 1
-        tipos = coletar_divergencias(vb) or ['divergência (não classificada)']
-        for t in tipos:
-            por_tipo[t] += 1
+        tipos = [t.lower() for t in (coletar_divergencias(vb) or [])]
+        if any(t in {"tombamento divergente", "tombamento", "etiqueta (ausente)"} for t in tipos):
+            p1 += 1
+        elif any(t in {"localização", "série", "responsável"} for t in tipos):
+            p2 += 1
+        elif any(t in {"descrição", "marca/modelo", "estado"} for t in tipos):
+            p3 += 1
 
-    total_registros = sum(por_tipo.values())
-    top = sorted(por_tipo.items(), key=lambda x: (-x[1], x[0]))[:5]
-    # retorna lista de dicts pra facilitar no template
-    top_tipos = [{'tipo': k, 'qtd': v} for k, v in top]
-    return {'total_bens': total_bens, 'total_registros': total_registros, 'top_tipos': top_tipos}
+    # ---------------- Checklist agregado (Confere/Divergente/NA/NI) ----------------
+    tipos_chk = [
+        ("localização", "Localização"),
+        ("série", "Série"),
+        ("responsável", "Responsável"),
+        ("descrição", "Descrição"),
+        ("marca/modelo", "Marca/Modelo"),
+        ("tombamento divergente", "Tombamento"),
+        ("etiqueta (ausente)", "Etiqueta"),
+    ]
+    checklist = {label: {"confere": 0, "diverge": 0, "na": 0, "ni": 0} for _, label in tipos_chk}
+
+    for bem in bens_qs:
+        vb = vb_map.get(bem.id)
+        if not vb or is_nao_encontrado(vb):
+            for _, label in tipos_chk:
+                checklist[label]["ni"] += 1
+            continue
+
+        tipos = [t.lower() for t in (coletar_divergencias(vb) or [])]
+        for key, label in tipos_chk:
+            if key == "tombamento divergente":
+                diverge = ("tombamento divergente" in tipos) or ("tombamento" in tipos)
+            else:
+                diverge = (key in tipos)
+            if diverge:
+                checklist[label]["diverge"] += 1
+            else:
+                checklist[label]["confere"] += 1
+
+    # ---------------- Top 5 "Não encontrados" por conta e por bloco ----------------
+    nao_por_conta = defaultdict(int)
+    nao_por_bloco = defaultdict(int)
+    for bem in bens_qs:
+        vb = vb_map.get(bem.id)
+        # Não vistoriado OU marcado nao_encontrado
+        if (not vb) or is_nao_encontrado(vb):
+            conta_raw = getattr(bem, 'conta_contabil', None) or getattr(bem, 'CONTA_CONTABIL', '')
+            cod, _ = parse_conta_contabil(conta_raw)
+            nao_por_conta[cod or "(sem conta)"] += 1
+            nao_por_bloco[_nome_bloco(bem) or "(sem bloco)"] += 1
+
+    top_nao_contas = sorted(nao_por_conta.items(), key=lambda kv: (-kv[1], kv[0]))[:5]
+    top_nao_blocos = sorted(nao_por_bloco.items(), key=lambda kv: (-kv[1], kv[0]))[:5]
+    top_nao_contas = [{"conta": k, "qtd": v} for k, v in top_nao_contas]
+    top_nao_blocos = [{"bloco": k, "qtd": v} for k, v in top_nao_blocos]
+
+    # ---------------- VistoriaExtra: “sem registro no SUAP” ----------------
+    no_registro = 0
+    if VistoriaExtra:
+        no_registro = VistoriaExtra.objects.filter(inventario=inv).count()
+
+    return {
+        "sum_p": {"p1": p1, "p2": p2, "p3": p3},
+        "no_registro": no_registro,
+        "checklist": checklist,
+        "top_nao_contas": top_nao_contas,
+        "top_nao_blocos": top_nao_blocos,
+    }
 
 
-def _resumo_sem_registro(inv: Inventario):
-    """Resumo de bens sem registro (VistoriaExtra). Tolerante a modelos sem FK 'sala'."""
-    if not inv or not VistoriaExtra:
-        return {'total': 0, 'top_setores': []}
-
-    # Sem select_related, pois 'sala' pode não existir nesse modelo
-    qs = VistoriaExtra.objects.filter(inventario=inv)
-    total = qs.count()
-    por_setor = defaultdict(int)
-
-    for ve in qs:
-        setor_nome = None
-
-        # 1) Se houver FK 'setor' direto
-        sdir = getattr(ve, 'setor', None)
-        if sdir:
-            setor_nome = getattr(sdir, 'nome', None) or getattr(sdir, 'descricao', None) or str(sdir)
-
-        # 2) Se houver algo como 'sala' e 'sala.setor' (quando existir)
-        if not setor_nome:
-            sala = getattr(ve, 'sala', None)
-            if sala:
-                setor = getattr(sala, 'setor', None)
-                if setor:
-                    setor_nome = getattr(setor, 'nome', None) or getattr(setor, 'descricao', None) or str(setor)
-
-        # 3) Campos de texto comuns em modelos simples
-        if not setor_nome:
-            setor_nome = (
-                getattr(ve, 'setor_nome', None) or
-                getattr(ve, 'unidade', None) or
-                getattr(ve, 'local', None) or
-                '—'
-            )
-
-        por_setor[setor_nome] += 1
-
-    top = sorted(por_setor.items(), key=lambda x: (-x[1], x[0]))[:5]
-    top_setores = [{'setor': k, 'qtd': v} for k, v in top]
-    return {'total': total, 'top_setores': top_setores}
+# --------------------------------------------------------------------------------------
+# Views
+# --------------------------------------------------------------------------------------
+def index(request: HttpRequest):
+    return redirect('relatorios:final')
 
 
-
-# -----------------------------
-# Relatório Final (HTML p/ impressão)
-# -----------------------------
-@staff_member_required
 @staff_member_required
 def relatorio_final(request: HttpRequest):
     """
-    Dashboard enxuto para gestão: KPIs, 3 gráficos (barras HTML/CSS) e quadro por conta.
-    Continua com o formulário de configurações recolhido no final da página.
+    Relatório Final (executivo): textos (apresentação/metodologia),
+    KPIs, gráficos e quadro por conta + sumários (P1/P2/P3, sem registro,
+    checklist agregado e Top 5 "não encontrados" por conta/bloco).
     """
     inv = _inventario_ativo()
     cfg = None
@@ -300,7 +340,7 @@ def relatorio_final(request: HttpRequest):
     # Linhas por conta (base SUAP × Vistoria) + totais
     linhas, total_row = _agrega_por_conta_base_bem(inv) if inv else ([], None)
 
-    # KPIs (totais gerais)
+    # KPIs + gráficos
     kpis = None
     graficos = {"cobertura_por_conta": [], "top_tipos": [], "top_blocos": []}
 
@@ -320,14 +360,14 @@ def relatorio_final(request: HttpRequest):
             "div_valor": total_row["val_div"],
         }
 
-        # 1) Cobertura por conta (ordenada desc) – usaremos top 12 para o gráfico
+        # 1) Cobertura por conta (ordenada desc) – top 12 para gráfico
         cov_sorted = sorted(
             [{"conta": l["conta_codigo"], "cobertura": float(l["cobertura"])} for l in linhas],
             key=lambda d: d["cobertura"], reverse=True
         )[:12]
         graficos["cobertura_por_conta"] = cov_sorted
 
-        # 2) Top tipos de divergência (usa apenas o inventário atual)
+        # 2) Top tipos de divergência (inventário atual)
         vb_qs = VistoriaBem.objects.select_related("bem").filter(inventario=inv)
         graficos["top_tipos"] = _top_tipos_divergencia(inv, vb_qs)
 
@@ -335,6 +375,15 @@ def relatorio_final(request: HttpRequest):
         bens_qs = Bem.objects.all()
         vb_map = {vb.bem_id: vb for vb in vb_qs}
         graficos["top_blocos"] = _top_blocos_pendencias(inv, bens_qs, vb_map)
+
+    # Sumários executivos
+    sumarios = _calc_sumarios(inv) if inv else {
+        "sum_p": {"p1": 0, "p2": 0, "p3": 0},
+        "no_registro": 0,
+        "checklist": {},
+        "top_nao_contas": [],
+        "top_nao_blocos": [],
+    }
 
     return render(request, "relatorios/final.html", _admin_ctx(request, {
         "title": "Relatório Final (Dashboard)",
@@ -344,12 +393,13 @@ def relatorio_final(request: HttpRequest):
         "total_row": total_row,
         "kpis": kpis,
         "graficos": graficos,
+        "sumarios": sumarios,   # <- novos blocos do template usam isso
     }))
 
 
-# -----------------------------
-# Demais relatórios (sem alterações além do cálculo já corrigido)
-# -----------------------------
+# --------------------------------------------------------------------------------------
+# Demais relatórios
+# --------------------------------------------------------------------------------------
 @staff_member_required
 def inventario_por_conta(request: HttpRequest):
     inv = _inventario_ativo()
@@ -412,10 +462,8 @@ def mapa_nao_conformidades(request: HttpRequest):
         desc_bem = getattr(bem, 'descricao', None) or getattr(bem, 'descricao_suap', None) or ''
         estado = getattr(vb, 'estado', None) or getattr(vb, 'estado_conservacao', None) or ''
 
-        # NOVO: diferenças SUAP × Vistoria
+        # Diferenças SUAP × Vistoria
         diffs = diferencas_detalhadas(vb)
-
-        # Se por algum motivo não detectou diffs, ainda assim registra um genérico
         if not diffs:
             diffs = [{"campo": "divergência (não classificada)", "suap": "", "vistoria": ""}]
 

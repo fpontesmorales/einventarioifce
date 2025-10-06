@@ -1,4 +1,4 @@
-/* ----------------- layout básico ----------------- */
+/* layout básico */
 .section {
   background: #fff;
   border: 1px solid #e3e3e3;
@@ -8,16 +8,45 @@
   box-shadow: 0 1px 2px rgba(0,0,0,.03);
 }
 .fullwidth { width: 100%; }
+.mt-16 { margin-top: 16px; }
+.mt-6 { margin-top: 6px; }
+.muted { color: #6b7280; font-size: 12px; }
 .num { text-align: right; }
+.nowrap { white-space: nowrap; }
+.mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace; }
 
 .cabecalho-wrap { display: flex; gap: 16px; align-items: center; }
 .cabecalho-titulos h1 { margin: 0 0 6px; }
 .logo { max-height: 80px; }
 
-/* ----------------- KPIs ----------------- */
+/* banner/info */
+.banner-info {
+  margin-top: 12px;
+  background: #fff8e6;
+  border: 1px solid #ffe0a3;
+  color: #7a5f22;
+  border-radius: 8px;
+  padding: 8px 10px;
+}
+
+/* legenda de pendências */
+.legend { display: flex; flex-direction: column; gap: 6px; margin-bottom: 8px; }
+.legend-row { display: flex; flex-wrap: wrap; gap: 8px; }
+.badge {
+  display: inline-flex; align-items: center; gap: 6px;
+  border: 1px solid #e6e6ea; border-radius: 999px;
+  padding: 6px 10px; font-size: 13px; background: #f7f7f9;
+}
+.badge-p1 { background: #fff1f1; border-color: #ffd6d6; }
+.badge-p2 { background: #fff8e6; border-color: #ffe8b3; }
+.badge-p3 { background: #f1f8ff; border-color: #dcecff; }
+.badge-neutral { background: #f7f7f9; }
+.legend-help { font-size: 12px; color: #666; }
+
+/* KPIs (3 colunas) */
 .kpi-grid {
   display: grid;
-  grid-template-columns: repeat(6, 1fr);
+  grid-template-columns: repeat(3, 1fr);
   gap: 12px;
 }
 .kpi {
@@ -25,54 +54,64 @@
   border-radius: 10px;
   padding: 10px 12px;
   background: #fafbfe;
+  min-height: 70px;
+  display: flex; flex-direction: column; justify-content: center;
 }
 .kpi-emph { background: #f1f8ff; border-color: #dcecff; }
-.kpi-warn { background: #fff8e6; border-color: #ffe8b3; }
+.kpi-warn { background: #faf3ff; border-color: #e8d9ff; }
 .kpi-alert { background: #fff1f1; border-color: #ffd6d6; }
 .kpi-label { font-size: 12px; color: #666; }
 .kpi-value { font-size: 22px; font-weight: 700; }
 .kpi .sub { font-size: 12px; font-weight: 500; color: #888; margin-left: 6px; }
 
-/* ----------------- gráficos (barras CSS) ----------------- */
+/* gráficos (2 colunas) */
 .charts-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr 1fr;
+  grid-template-columns: 1fr 1fr;
   gap: 12px;
 }
-.chart-card { border: 1px solid #eaeaea; border-radius: 10px; padding: 12px; background: #fff; }
-.barlst-title { margin: 0 0 8px; }
+.chart-card {
+  border: 1px solid #eaeaea; border-radius: 10px; padding: 12px; background: #fff;
+  min-height: 180px;
+}
 .barlist { display: flex; flex-direction: column; gap: 8px; }
-.barrow { display: grid; grid-template-columns: 160px 1fr; gap: 8px; align-items: center; }
+.barrow { display: grid; grid-template-columns: 200px 1fr; gap: 8px; align-items: center; }
 .barlabel { font-size: 12px; color: #555; word-break: break-word; }
 .barwrap { position: relative; height: 18px; background: #f2f4f8; border-radius: 9px; overflow: hidden; border: 1px solid #e6e8ec; }
-.bar { position: absolute; left: 0; top: 0; bottom: 0; width: var(--w, 0%); background: #4a90e2; }
+.bar { position: absolute; left: 0; top: 0; bottom: 0; background: #4a90e2; }
 .barpct { position: absolute; right: 6px; top: 0; bottom: 0; display: flex; align-items: center; font-size: 12px; color: #fff; text-shadow: 0 1px 1px rgba(0,0,0,.3); }
 
-/* ----------------- tabela ----------------- */
+/* tabela */
 table.listing { border-collapse: collapse; width: 100%; }
 table.listing th, table.listing td { border-bottom: 1px solid #eee; padding: 8px 10px; }
 table.listing thead th { background: #f8f9fb; font-weight: 600; }
 table.listing tbody tr:nth-child(odd) td { background: #fcfdff; }
 table.listing tr.total-row td { border-top: 2px solid #999; background: #f4f6fa; }
+table.compact th, table.compact td { padding: 6px 8px; }
 
-/* ----------------- assinaturas ----------------- */
+/* painéis auxiliares */
+.grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.grid-2-tight { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.panel-card { border: 1px solid #eaeaea; border-radius: 10px; padding: 12px; background: #fff; }
+
+/* assinaturas */
 table.assinaturas { width: 100%; }
 table.assinaturas td { padding: 18px 8px; }
 
-/* ----------------- configs ----------------- */
+/* configs */
 .config summary { cursor: pointer; font-weight: 600; }
 .relatorios-sidebar { background: #fff; border: 1px solid #e3e3e3; border-radius: 10px; padding: 12px; }
 .relatorios-sidebar .btns { margin-top: 10px; display: flex; gap: 8px; }
 
-/* ----------------- impressão limpa ----------------- */
+/* impressão */
 @media print {
   .no-print, header, nav, .breadcrumbs, .navbar, #jazzy-menu,
-  .brand-link, .sidebar, .main-header, .main-footer, footer,
-  .copyright, .copyright-text {
+  .brand-link, .sidebar, .main-header, .main-footer, footer {
     display: none !important;
   }
   body { margin: 0; }
   .section { border: none; box-shadow: none; padding: 0; }
   .kpi-grid { grid-template-columns: repeat(3, 1fr); gap: 8px; }
   .charts-grid { grid-template-columns: 1fr 1fr; gap: 8px; }
+  .grid-2 { grid-template-columns: 1fr 1fr; }
 }
