@@ -1,7 +1,7 @@
 {% extends "admin/base_site.html" %}
 {% load static relatorio_extras %}
 {% block extrastyle %}
-<link rel="stylesheet" href="{% static 'relatorios/final.css' %}">
+<link rel="stylesheet" href="{% static 'relatorios/final.css' %}?v={{ total_row.qtd_total|default:0 }}">
 {% endblock %}
 {% block content %}
 
