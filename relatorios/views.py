@@ -1,12 +1,17 @@
 from collections import defaultdict
+import io
+import os
+import zipfile
 
 from django.contrib.admin.sites import site as admin_site
 from django.contrib.admin.views.decorators import staff_member_required
 from django.shortcuts import render, redirect
-from django.http import HttpRequest
+from django.http import HttpRequest, HttpResponse
 
 from patrimonio.models import Bem
 from vistoria.models import Inventario, VistoriaBem
+from vistoria.models import split_sala_bloco  # <- já existe no seu app
+
 from .utils import (
     SEI, PORTARIA, PERIODO,
     parse_conta_contabil, valor_bem,
@@ -63,7 +68,7 @@ def _nome_sala(obj):
 
 
 # --------------------------------------------------------------------------------------
-# Top listas usadas nos gráficos
+# Top listas usadas nos gráficos (Relatório Final)
 # --------------------------------------------------------------------------------------
 def _top_tipos_divergencia(inv, vb_qs):
     """Top 5 tipos de divergência (exclui 'não encontrado' e QUALQUER etiqueta que não seja 'etiqueta (ausente)')."""
@@ -74,32 +79,26 @@ def _top_tipos_divergencia(inv, vb_qs):
             tt = str(t).strip().lower()
             if tt == "não encontrado":
                 continue
-            # mantém só etiqueta ausente; ignora outras etiquetas
-            if tt.startswith("etiqueta"):
-                if tt != "etiqueta (ausente)":
-                    continue
+            if tt.startswith("etiqueta") and tt != "etiqueta (ausente)":
+                continue
             cont[t] += 1
     pares = sorted(cont.items(), key=lambda kv: (-kv[1], kv[0]))[:5]
     return [{"rotulo": k, "qtd": v} for k, v in pares]
 
 
 def _top_blocos_pendencias(inv, bens_qs, vb_map):
-    """
-    Top 5 blocos com pendências (não encontrados + divergentes).
-    Usa o BLOCO do SUAP (Bem) para consistência gerencial.
-    """
+    """Top 5 blocos com pendências (não encontrados + divergentes), usando bloco do SUAP (Bem)."""
     pend = defaultdict(int)
     for bem in bens_qs:
         vb = vb_map.get(bem.id)
         bloco = _nome_bloco(bem) or "—"
         if not vb:
-            pend[bloco] += 1  # não vistoriado = pendência
+            pend[bloco] += 1
             continue
         if is_nao_encontrado(vb):
             pend[bloco] += 1
             continue
         tipos = coletar_divergencias(vb) or []
-        # conta como pendência se tiver qq divergência (exceto 'não encontrado' e etiquetas não-ausentes)
         has_div = False
         for t in tipos:
             tt = str(t).strip().lower()
@@ -207,18 +206,9 @@ def _agrega_por_conta_base_bem(inv: Inventario):
 
 
 # --------------------------------------------------------------------------------------
-# Sumários (P1/P2/P3, checklist agregado, “sem registro”, tops de não encontrados)
+# Sumários (Relatório Final)
 # --------------------------------------------------------------------------------------
 def _calc_sumarios(inv: Inventario):
-    """
-    Retorna:
-      - sum_p: {'p1': int, 'p2': int, 'p3': int}
-      - no_registro: int (VistoriaExtra, se existir)
-      - checklist: dict por tipo (Localização/Série/Responsável/Descrição/Marca-Modelo/Tombamento/Etiqueta)
-                  com confere/diverge/na/ni
-      - top_nao_contas: [{'conta': '123..', 'qtd': N}, ...]
-      - top_nao_blocos: [{'bloco': 'X', 'qtd': N}, ...]
-    """
     if not inv:
         return {
             "sum_p": {"p1": 0, "p2": 0, "p3": 0},
@@ -232,12 +222,12 @@ def _calc_sumarios(inv: Inventario):
     bens_qs = Bem.objects.all()
     vb_map = {vb.bem_id: vb for vb in vb_qs}
 
-    # ---------------- P1/P2/P3 por ITEM ----------------
+    # P1/P2/P3
     p1 = p2 = p3 = 0
     for bem in bens_qs:
         vb = vb_map.get(bem.id)
         if not vb or is_nao_encontrado(vb):
-            p1 += 1  # não vistoriado/nao encontrado entra em P1
+            p1 += 1
             continue
         tipos = [t.lower() for t in (coletar_divergencias(vb) or [])]
         if any(t in {"tombamento divergente", "tombamento", "etiqueta (ausente)"} for t in tipos):
@@ -247,7 +237,7 @@ def _calc_sumarios(inv: Inventario):
         elif any(t in {"descrição", "marca/modelo", "estado"} for t in tipos):
             p3 += 1
 
-    # ---------------- Checklist agregado (Confere/Divergente/NA/NI) ----------------
+    # Checklist (vistoriados)
     tipos_chk = [
         ("localização", "Localização"),
         ("série", "Série"),
@@ -265,39 +255,29 @@ def _calc_sumarios(inv: Inventario):
             for _, label in tipos_chk:
                 checklist[label]["ni"] += 1
             continue
-
         tipos = [t.lower() for t in (coletar_divergencias(vb) or [])]
         for key, label in tipos_chk:
-            if key == "tombamento divergente":
-                diverge = ("tombamento divergente" in tipos) or ("tombamento" in tipos)
-            else:
-                diverge = (key in tipos)
+            diverge = ("tombamento divergente" in tipos or "tombamento" in tipos) if key == "tombamento divergente" else (key in tipos)
             if diverge:
                 checklist[label]["diverge"] += 1
             else:
                 checklist[label]["confere"] += 1
 
-    # ---------------- Top 5 "Não encontrados" por conta e por bloco ----------------
+    # Top "não encontrados"
     nao_por_conta = defaultdict(int)
     nao_por_bloco = defaultdict(int)
     for bem in bens_qs:
         vb = vb_map.get(bem.id)
-        # Não vistoriado OU marcado nao_encontrado
         if (not vb) or is_nao_encontrado(vb):
             conta_raw = getattr(bem, 'conta_contabil', None) or getattr(bem, 'CONTA_CONTABIL', '')
             cod, _ = parse_conta_contabil(conta_raw)
             nao_por_conta[cod or "(sem conta)"] += 1
             nao_por_bloco[_nome_bloco(bem) or "(sem bloco)"] += 1
 
-    top_nao_contas = sorted(nao_por_conta.items(), key=lambda kv: (-kv[1], kv[0]))[:5]
-    top_nao_blocos = sorted(nao_por_bloco.items(), key=lambda kv: (-kv[1], kv[0]))[:5]
-    top_nao_contas = [{"conta": k, "qtd": v} for k, v in top_nao_contas]
-    top_nao_blocos = [{"bloco": k, "qtd": v} for k, v in top_nao_blocos]
+    top_nao_contas = [{"conta": k, "qtd": v} for k, v in sorted(nao_por_conta.items(), key=lambda kv: (-kv[1], kv[0]))[:5]]
+    top_nao_blocos = [{"bloco": k, "qtd": v} for k, v in sorted(nao_por_bloco.items(), key=lambda kv: (-kv[1], kv[0]))[:5]]
 
-    # ---------------- VistoriaExtra: “sem registro no SUAP” ----------------
-    no_registro = 0
-    if VistoriaExtra:
-        no_registro = VistoriaExtra.objects.filter(inventario=inv).count()
+    no_registro = VistoriaExtra.objects.filter(inventario=inv).count() if VistoriaExtra else 0
 
     return {
         "sum_p": {"p1": p1, "p2": p2, "p3": p3},
@@ -309,7 +289,7 @@ def _calc_sumarios(inv: Inventario):
 
 
 # --------------------------------------------------------------------------------------
-# Views
+# Views existentes
 # --------------------------------------------------------------------------------------
 def index(request: HttpRequest):
     return redirect('relatorios:final')
@@ -317,11 +297,6 @@ def index(request: HttpRequest):
 
 @staff_member_required
 def relatorio_final(request: HttpRequest):
-    """
-    Relatório Final (executivo): textos (apresentação/metodologia),
-    KPIs, gráficos e quadro por conta + sumários (P1/P2/P3, sem registro,
-    checklist agregado e Top 5 "não encontrados" por conta/bloco).
-    """
     inv = _inventario_ativo()
     cfg = None
     form = None
@@ -337,13 +312,10 @@ def relatorio_final(request: HttpRequest):
         else:
             form = RelatorioConfigForm(instance=cfg)
 
-    # Linhas por conta (base SUAP × Vistoria) + totais
     linhas, total_row = _agrega_por_conta_base_bem(inv) if inv else ([], None)
 
-    # KPIs + gráficos
     kpis = None
     graficos = {"cobertura_por_conta": [], "top_tipos": [], "top_blocos": []}
-
     if inv and total_row:
         total_suap_itens = total_row["qtd_total"]
         total_suap_valor = (total_row["val_ok"] + total_row["val_nao"] + total_row["val_div"])
@@ -351,7 +323,7 @@ def relatorio_final(request: HttpRequest):
             "suap_itens": total_suap_itens,
             "suap_valor": total_suap_valor,
             "vist_itens": total_row["qtd_vist"],
-            "cobertura": total_row["cobertura"],  # já em %
+            "cobertura": total_row["cobertura"],
             "ok_itens": total_row["qtd_ok"],
             "ok_valor": total_row["val_ok"],
             "nao_itens": total_row["qtd_nao"],
@@ -360,23 +332,18 @@ def relatorio_final(request: HttpRequest):
             "div_valor": total_row["val_div"],
         }
 
-        # 1) Cobertura por conta (ordenada desc) – top 12 para gráfico
+        vb_qs = VistoriaBem.objects.select_related("bem").filter(inventario=inv)
         cov_sorted = sorted(
             [{"conta": l["conta_codigo"], "cobertura": float(l["cobertura"])} for l in linhas],
             key=lambda d: d["cobertura"], reverse=True
         )[:12]
         graficos["cobertura_por_conta"] = cov_sorted
-
-        # 2) Top tipos de divergência (inventário atual)
-        vb_qs = VistoriaBem.objects.select_related("bem").filter(inventario=inv)
         graficos["top_tipos"] = _top_tipos_divergencia(inv, vb_qs)
 
-        # 3) Top blocos com pendências (base SUAP)
         bens_qs = Bem.objects.all()
         vb_map = {vb.bem_id: vb for vb in vb_qs}
         graficos["top_blocos"] = _top_blocos_pendencias(inv, bens_qs, vb_map)
 
-    # Sumários executivos
     sumarios = _calc_sumarios(inv) if inv else {
         "sum_p": {"p1": 0, "p2": 0, "p3": 0},
         "no_registro": 0,
@@ -393,13 +360,10 @@ def relatorio_final(request: HttpRequest):
         "total_row": total_row,
         "kpis": kpis,
         "graficos": graficos,
-        "sumarios": sumarios,   # <- novos blocos do template usam isso
+        "sumarios": sumarios,
     }))
 
 
-# --------------------------------------------------------------------------------------
-# Demais relatórios
-# --------------------------------------------------------------------------------------
 @staff_member_required
 def inventario_por_conta(request: HttpRequest):
     inv = _inventario_ativo()
@@ -444,7 +408,6 @@ def mapa_nao_conformidades(request: HttpRequest):
 
     linhas = []
     for vb in qs:
-        # só entra quem tem alguma divergência (ou não encontrado)
         if not is_divergente(vb) and not is_nao_encontrado(vb):
             continue
 
@@ -462,7 +425,6 @@ def mapa_nao_conformidades(request: HttpRequest):
         desc_bem = getattr(bem, 'descricao', None) or getattr(bem, 'descricao_suap', None) or ''
         estado = getattr(vb, 'estado', None) or getattr(vb, 'estado_conservacao', None) or ''
 
-        # Diferenças SUAP × Vistoria
         diffs = diferencas_detalhadas(vb)
         if not diffs:
             diffs = [{"campo": "divergência (não classificada)", "suap": "", "vistoria": ""}]
@@ -503,3 +465,213 @@ def mapa_nao_conformidades(request: HttpRequest):
         'inventario': inv,
         'linhas': linhas,
     }))
+
+
+# --------------------------------------------------------------------------------------
+# ETAPA B — Relatório Operacional (por Bloco/Sala) + ZIP de fotos
+# --------------------------------------------------------------------------------------
+
+def _coletar_operacional(inv: Inventario, bloco_f: str, sala_f: str, _apenas_pendencias_ignorado: bool):
+    """
+    Agora retorna APENAS pendências vistoriadas:
+      - Bens cadastrados (SUAP) que foram vistoriados e estão DIVERGENTES
+      - VistoriaExtra (itens sem registro no SUAP)
+    NÃO lista: não vistoriados, nem 'não encontrados'
+    """
+    grupos = []
+    extras = []
+
+    # ---- Bens cadastrados (SUAP) -> SOMENTE DIVERGENTES ----
+    if inv:
+        # Só carrega VistoriaBem do inventário atual
+        vb_qs = VistoriaBem.objects.select_related('bem').filter(inventario=inv)
+        vb_by_bem_id = {vb.bem_id: vb for vb in vb_qs}
+
+        grupo_map = defaultdict(list)
+
+        for bem in Bem.objects.all():
+            # Parse "Sala (Bloco)" do texto do SUAP
+            sala_txt = (bem.sala or "").strip()
+            sala_nome, bloco_nome = split_sala_bloco(sala_txt)
+            bloco = (bloco_nome or "—").strip()
+            sala = (sala_nome or "—").strip()
+
+            if bloco_f and bloco_f.lower() not in bloco.lower():
+                continue
+            if sala_f and sala_f.lower() not in sala.lower():
+                continue
+
+            vb = vb_by_bem_id.get(bem.id)
+            # Exclui: não vistoriados
+            if not vb:
+                continue
+            # Exclui: não encontrados
+            if is_nao_encontrado(vb):
+                continue
+            # Mantém: APENAS divergentes
+            if not is_divergente(vb):
+                continue
+
+            diffs = diferencas_detalhadas(vb) or [{"campo": "divergência (não classificada)", "suap": "", "vistoria": ""}]
+            conta_raw = (bem.conta_contabil or "").strip()
+            cod = (conta_raw.split("-", 1)[0].strip() if conta_raw else "(sem conta)")
+            tomb = (bem.tombamento or "").strip()
+            desc_bem = (bem.descricao or "").strip()
+            resp_nome = (bem.setor_responsavel or "").strip()  # responsável SUAP (texto)
+
+            # foto (se houver em VistoriaBem)
+            foto_url = None
+            f = getattr(vb, "foto_marcadagua", None) or getattr(vb, "foto", None)
+            if f:
+                try:
+                    foto_url = f.url
+                except Exception:
+                    foto_url = None
+
+            grupo_map[(bloco, sala)].append({
+                "status": "Divergente",
+                "tombamento": tomb,
+                "descricao": desc_bem,
+                "conta": cod,
+                "responsavel": resp_nome,
+                "diffs": diffs,
+                "foto_url": foto_url,
+            })
+
+        for (bloco, sala), itens in sorted(grupo_map.items(), key=lambda kv: (kv[0][0], kv[0][1])):
+            grupos.append({"bloco": bloco, "sala": sala, "itens": itens})
+
+    # ---- VistoriaExtra: Sem registro no SUAP (continua aparecendo) ----
+    if inv and VistoriaExtra:
+        extras_map = defaultdict(list)
+        for ve in VistoriaExtra.objects.filter(inventario=inv).all():
+            bloco = (getattr(ve, "sala_obs_bloco", None) or "—").strip()
+            sala = (getattr(ve, "sala_obs_nome", None) or "—").strip()
+
+            if bloco_f and bloco_f.lower() not in bloco.lower():
+                continue
+            if sala_f and sala_f.lower() not in sala.lower():
+                continue
+
+            foto_url = None
+            f = getattr(ve, "foto_marcadagua", None)
+            if f:
+                try:
+                    foto_url = f.url
+                except Exception:
+                    foto_url = None
+
+            extras_map[(bloco, sala)].append({
+                "descricao": getattr(ve, "descricao_obs", "") or "",
+                "serie": getattr(ve, "numero_serie_obs", "") or "",
+                "estado": getattr(ve, "estado_obs", "") or "",
+                "responsavel": getattr(ve, "responsavel_obs", "") or "",
+                "etiqueta_ausente": (getattr(ve, "etiqueta_possui", True) is False),
+                "obs": getattr(ve, "observacoes", "") or "",
+                "foto_url": foto_url,
+            })
+
+        for (bloco, sala), itens in sorted(extras_map.items(), key=lambda kv: (kv[0][0], kv[0][1])):
+            extras.append({"bloco": bloco, "sala": sala, "itens": itens})
+
+    return grupos, extras
+
+
+@staff_member_required
+def relatorio_operacional(request: HttpRequest):
+    inv = _inventario_ativo()
+    bloco_f = (request.GET.get("bloco") or "").strip()
+    sala_f = (request.GET.get("sala") or "").strip()
+    apenas_pend = (request.GET.get("apenas_pendencias", "1") not in {"0", "false", "no"})
+
+    grupos, extras = _coletar_operacional(inv, bloco_f, sala_f, apenas_pend)
+
+    return render(request, "relatorios/operacional.html", _admin_ctx(request, {
+        "title": "Relatório Operacional (Bloco/Sala)",
+        "inventario": inv,
+        "filtros": {"bloco": bloco_f, "sala": sala_f, "apenas_pendencias": 1 if apenas_pend else 0},
+        "grupos": grupos,          # bens do SUAP (com status e diffs)
+        "extras": extras,          # VistoriaExtra (sem registro)
+    }))
+
+
+@staff_member_required
+def operacional_fotos_zip(request: HttpRequest):
+    """Gera um .zip com fotos, em pastas: Bloco/Sala/{Conformes|Divergentes|NaoVistoriado}/arquivo.jpg e Bloco/Sala/SemRegistro/arquivo.jpg"""
+    inv = _inventario_ativo()
+    bloco_f = (request.GET.get("bloco") or "").strip()
+    sala_f = (request.GET.get("sala") or "").strip()
+
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+
+        # VistoriaBem (se existir foto)
+        if inv:
+            vb_qs = VistoriaBem.objects.select_related('bem').filter(inventario=inv)
+            for vb in vb_qs:
+                bem = vb.bem
+                sala_txt = (bem.sala or "").strip()
+                sala_nome, bloco_nome = split_sala_bloco(sala_txt)
+                bloco = (bloco_nome or "—").strip()
+                sala = (sala_nome or "—").strip()
+                if bloco_f and bloco_f.lower() not in bloco.lower():
+                    continue
+                if sala_f and sala_f.lower() not in sala.lower():
+                    continue
+
+                status_dir = "Conformes"
+                if not is_encontrado(vb) and (is_nao_encontrado(vb) or is_divergente(vb)):
+                    status_dir = "Divergentes"
+                if not vb:
+                    status_dir = "NaoVistoriado"
+
+                f = getattr(vb, "foto_marcadagua", None) or getattr(vb, "foto", None)
+                if not f:
+                    continue
+                try:
+                    path = f.path
+                except Exception:
+                    continue
+                if not path or not os.path.exists(path):
+                    continue
+
+                tomb = getattr(bem, 'tombamento', None) or getattr(bem, 'numero_tombamento', None) or ''
+                filename = os.path.basename(path)
+                safe_name = f"{tomb or 'sem_tombo'}_{filename}"
+                arcname = f"{bloco}/{sala}/{status_dir}/{safe_name}"
+                try:
+                    zf.write(path, arcname=arcname)
+                except Exception:
+                    continue
+
+        # VistoriaExtra (sem registro)
+        if inv and VistoriaExtra:
+            for ve in VistoriaExtra.objects.filter(inventario=inv).all():
+                bloco = (getattr(ve, "sala_obs_bloco", None) or "—").strip()
+                sala = (getattr(ve, "sala_obs_nome", None) or "—").strip()
+                if bloco_f and bloco_f.lower() not in bloco.lower():
+                    continue
+                if sala_f and sala_f.lower() not in sala.lower():
+                    continue
+
+                f = getattr(ve, "foto_marcadagua", None)
+                if not f:
+                    continue
+                try:
+                    path = f.path
+                except Exception:
+                    continue
+                if not path or not os.path.exists(path):
+                    continue
+
+                filename = os.path.basename(path)
+                arcname = f"{bloco}/{sala}/SemRegistro/{filename}"
+                try:
+                    zf.write(path, arcname=arcname)
+                except Exception:
+                    continue
+
+    buf.seek(0)
+    resp = HttpResponse(buf.getvalue(), content_type="application/zip")
+    resp["Content-Disposition"] = 'attachment; filename="fotos_operacional.zip"'
+    return resp

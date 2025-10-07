@@ -1,0 +1,234 @@
+{% extends "admin/base_site.html" %}
+{% load static relatorio_extras %}
+{% block extrastyle %}
+<link rel="stylesheet" href="{% static 'relatorios/operacional.css' %}?v={{ filtros.apenas_pendencias }}{{ filtros.bloco }}{{ filtros.sala }}">
+{% endblock %}
+{% block content %}
+
+<div class="container-xxl py-3">
+
+  <!-- Cabeçalho -->
+  <div class="card mb-3 shadow-sm">
+    <div class="card-body d-flex flex-wrap justify-content-between align-items-start gap-3">
+      <div>
+        <h1 class="h3 mb-1">Relatório Operacional (Bloco/Sala)</h1>
+        <div class="text-muted small">IFCE – Campus Caucaia</div>
+        <div class="text-muted small mt-1">
+          <strong>SEI:</strong> {{ SEI }} &nbsp;|&nbsp;
+          <strong>Portaria:</strong> {{ PORTARIA }} &nbsp;|&nbsp;
+          <strong>Período:</strong> {{ PERIODO }}
+        </div>
+      </div>
+      <div class="d-print-none">
+        <a class="btn btn-primary me-2" href="#" onclick="window.print();return false;">
+          <i class="fa fa-print me-1"></i> Imprimir / PDF
+        </a>
+        <a class="btn btn-outline-secondary"
+           href="{% url 'relatorios:operacional_fotos_zip' %}?bloco={{ filtros.bloco|urlencode }}&sala={{ filtros.sala|urlencode }}">
+          <i class="fa fa-file-zipper me-1"></i> Baixar fotos (ZIP)
+        </a>
+      </div>
+    </div>
+  </div>
+
+  <!-- Filtros -->
+  <div class="card mb-4 shadow-sm d-print-none">
+    <div class="card-header fw-semibold">
+      Filtros
+    </div>
+    <div class="card-body">
+      <form method="get" class="row g-3 align-items-end">
+        <div class="col-sm-4 col-md-3">
+          <label class="form-label">Bloco</label>
+          <input type="text" name="bloco" value="{{ filtros.bloco }}" class="form-control" placeholder="Ex.: Bloco A">
+        </div>
+        <div class="col-sm-4 col-md-3">
+          <label class="form-label">Sala</label>
+          <input type="text" name="sala" value="{{ filtros.sala }}" class="form-control" placeholder="Ex.: 101">
+        </div>
+        <div class="col-sm-4 col-md-3">
+          <div class="form-check mt-4">
+            <input class="form-check-input" type="checkbox" name="apenas_pendencias" value="1" id="chkPend"
+                   {% if filtros.apenas_pendencias %}checked{% endif %}>
+            <label class="form-check-label" for="chkPend">
+              Apenas pendências
+            </label>
+          </div>
+        </div>
+        <div class="col-md-3 text-end">
+          <button class="btn btn-primary me-2" type="submit">
+            <i class="fa fa-filter me-1"></i> Aplicar
+          </button>
+          <a class="btn btn-outline-secondary" href="{% url 'relatorios:operacional' %}">
+            Limpar
+          </a>
+        </div>
+      </form>
+      <div class="text-muted small mt-2">
+        Exibindo apenas <strong>pendências vistoriadas (divergentes)</strong> e <strong>itens sem registro</strong>.
+      </div>
+    </div>
+  </div>
+
+  <!-- Bens (Divergentes) -->
+  <div class="card mb-4 shadow-sm">
+    <div class="card-header d-flex justify-content-between align-items-center">
+      <span class="fw-semibold">Pendências Vistoriadas — Bens Cadastrados (Divergentes)</span>
+      <span class="badge bg-danger-subtle text-danger border border-danger-subtle">
+        Divergentes
+      </span>
+    </div>
+    <div class="card-body p-0">
+
+      {% if grupos %}
+        {% for g in grupos %}
+          <div class="border-bottom px-3 pt-3 pb-2 grupo-bloco">
+            <div class="d-flex flex-wrap justify-content-between align-items-center">
+              <div class="mb-2">
+                <span class="text-muted">Bloco</span>
+                <span class="fw-semibold me-3">{{ g.bloco }}</span>
+                <span class="text-muted">Sala</span>
+                <span class="fw-semibold">{{ g.sala }}</span>
+              </div>
+              <span class="badge bg-secondary-subtle text-secondary">{{ g.itens|length }} item(ns)</span>
+            </div>
+          </div>
+          <div class="table-responsive">
+            <table class="table table-sm table-striped table-hover align-middle mb-0">
+              <thead class="table-light">
+                <tr>
+                  <th class="text-nowrap">Tombamento</th>
+                  <th>Descrição</th>
+                  <th class="text-nowrap">Conta</th>
+                  <th>Responsável (SUAP)</th>
+                  <th class="text-nowrap">Divergências</th>
+                  <th class="text-nowrap text-center">Foto</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for it in g.itens %}
+                  <tr class="table-warning">
+                    <td class="font-monospace text-nowrap">{{ it.tombamento }}</td>
+                    <td>{{ it.descricao }}</td>
+                    <td class="font-monospace text-nowrap">{{ it.conta }}</td>
+                    <td>{{ it.responsavel }}</td>
+                    <td>
+                      {% if it.diffs %}
+                        <ul class="list-unstyled mb-0 small">
+                          {% for d in it.diffs %}
+                            <li class="mb-1">
+                              <span class="badge bg-warning-subtle text-warning border border-warning-subtle me-1">{{ d.campo }}</span>
+                              {% if d.suap or d.vistoria %}
+                                <span class="text-muted">SUAP:</span> {{ d.suap|default:"—" }}
+                                <span class="text-muted mx-1">→</span>
+                                <span class="text-muted">Vistoria:</span> {{ d.vistoria|default:"—" }}
+                              {% else %}
+                                <em class="text-muted">pendência</em>
+                              {% endif %}
+                            </li>
+                          {% endfor %}
+                        </ul>
+                      {% else %}
+                        <span class="text-muted">—</span>
+                      {% endif %}
+                    </td>
+                    <td class="text-center">
+                      {% if it.foto_url %}
+                        <a href="{{ it.foto_url }}" target="_blank" rel="noopener">
+                          <img src="{{ it.foto_url }}" alt="foto" class="thumb img-thumbnail">
+                        </a>
+                      {% else %}
+                        <span class="text-muted">—</span>
+                      {% endif %}
+                    </td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        {% endfor %}
+      {% else %}
+        <div class="p-3">
+          <p class="text-muted mb-0">Nenhuma pendência nos filtros aplicados.</p>
+        </div>
+      {% endif %}
+
+    </div>
+  </div>
+
+  <!-- Sem registro no SUAP -->
+  <div class="card shadow-sm">
+    <div class="card-header d-flex justify-content-between align-items-center">
+      <span class="fw-semibold">Itens sem Registro no SUAP (Vistoria Extra)</span>
+      <span class="badge bg-danger text-white"><i class="fa fa-triangle-exclamation me-1"></i> Sem registro</span>
+    </div>
+    <div class="card-body p-0">
+
+      {% if extras %}
+        {% for g in extras %}
+          <div class="border-bottom px-3 pt-3 pb-2 grupo-bloco">
+            <div class="d-flex flex-wrap justify-content-between align-items-center">
+              <div class="mb-2">
+                <span class="text-muted">Bloco</span>
+                <span class="fw-semibold me-3">{{ g.bloco }}</span>
+                <span class="text-muted">Sala</span>
+                <span class="fw-semibold">{{ g.sala }}</span>
+              </div>
+              <span class="badge bg-secondary-subtle text-secondary">{{ g.itens|length }} item(ns)</span>
+            </div>
+          </div>
+          <div class="table-responsive">
+            <table class="table table-sm table-striped table-hover align-middle mb-0">
+              <thead class="table-light">
+                <tr>
+                  <th>Descrição</th>
+                  <th class="text-nowrap">Série</th>
+                  <th>Estado</th>
+                  <th>Responsável</th>
+                  <th class="text-nowrap">Etiqueta</th>
+                  <th>Observação</th>
+                  <th class="text-nowrap text-center">Foto</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for it in g.itens %}
+                  <tr class="table-danger">
+                    <td>{{ it.descricao }}</td>
+                    <td class="font-monospace text-nowrap">{{ it.serie|default:"—" }}</td>
+                    <td>{{ it.estado|default:"—" }}</td>
+                    <td>{{ it.responsavel|default:"—" }}</td>
+                    <td class="text-nowrap">
+                      {% if it.etiqueta_ausente %}
+                        <span class="badge bg-danger">ausente</span>
+                      {% else %}
+                        <span class="badge bg-success">presente</span>
+                      {% endif %}
+                    </td>
+                    <td>{{ it.obs|default:"—" }}</td>
+                    <td class="text-center">
+                      {% if it.foto_url %}
+                        <a href="{{ it.foto_url }}" target="_blank" rel="noopener">
+                          <img src="{{ it.foto_url }}" alt="foto" class="thumb img-thumbnail">
+                        </a>
+                      {% else %}
+                        <span class="text-muted">—</span>
+                      {% endif %}
+                    </td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        {% endfor %}
+      {% else %}
+        <div class="p-3">
+          <p class="text-muted mb-0">Nenhum item extra para os filtros aplicados.</p>
+        </div>
+      {% endif %}
+
+    </div>
+  </div>
+
+</div>
+
+{% endblock %}

@@ -1,0 +1,13 @@
+/* Retoques visuais e impressão (Bootstrap já provê quase tudo) */
+.grupo-bloco { background: #fff; }
+.thumb { width: 76px; height: 76px; object-fit: cover; }
+.table td, .table th { vertical-align: top; }
+
+/* Impressão: remove chrome do admin e economiza tinta */
+@media print {
+  header, nav, .navbar, .breadcrumbs, #jazzy-menu, .main-footer, .main-header, .d-print-none { display: none !important; }
+  .container-xxl { max-width: 100% !important; padding: 0 !important; }
+  .card, .card-header, .card-body { border: 0 !important; box-shadow: none !important; }
+  .table { font-size: 12px; }
+  .thumb { width: 58px; height: 58px; }
+}

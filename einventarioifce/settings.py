@@ -186,17 +186,16 @@ JAZZMIN_SETTINGS = {
     # Deixa a navegação expandida
     "navigation_expanded": True,
 
-    # Atalhos no topo (header)
     "topmenu_links": [
         {"name": "Relatório Final", "url": "relatorios:final", "new_window": False, "permissions": []},
+        {"name": "Relatório Operacional", "url": "relatorios:operacional", "new_window": False, "permissions": []},
         {"name": "Inventário por Conta", "url": "relatorios:inventario_por_conta", "new_window": False, "permissions": []},
         {"name": "Mapa de NC", "url": "relatorios:mapa_nao_conformidades", "new_window": False, "permissions": []},
     ],
-
-    # Links extras sob o app "relatorios" na sidebar
     "custom_links": {
         "relatorios": [
             {"name": "Relatório Final", "url": "relatorios:final", "icon": "fas fa-print", "permissions": []},
+            {"name": "Relatório Operacional", "url": "relatorios:operacional", "icon": "fas fa-list-check", "permissions": []},
             {"name": "Inventário por Conta", "url": "relatorios:inventario_por_conta", "icon": "fas fa-table", "permissions": []},
             {"name": "Mapa de NC", "url": "relatorios:mapa_nao_conformidades", "icon": "fas fa-exclamation-triangle", "permissions": []},
         ],

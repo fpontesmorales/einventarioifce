@@ -4,13 +4,12 @@ from . import views
 app_name = "relatorios"
 
 urlpatterns = [
-    # Relatório Final (novo)
+    path("", views.index, name="index"),
     path("final/", views.relatorio_final, name="final"),
-
-    # Já existentes:
     path("inventario-por-conta/", views.inventario_por_conta, name="inventario_por_conta"),
     path("mapa-nao-conformidades/", views.mapa_nao_conformidades, name="mapa_nao_conformidades"),
 
-    # Opcional: índice simples
-    path("", views.inventario_por_conta, name="index"),
+    # ETAPA B — Operacional
+    path("operacional/", views.relatorio_operacional, name="operacional"),
+    path("operacional/fotos.zip", views.operacional_fotos_zip, name="operacional_fotos_zip"),
 ]
