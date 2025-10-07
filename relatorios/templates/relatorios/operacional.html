@@ -132,15 +132,15 @@
                         <span class="text-muted">—</span>
                       {% endif %}
                     </td>
-                    <td class="text-center">
-                      {% if it.foto_url %}
-                        <a href="{{ it.foto_url }}" target="_blank" rel="noopener">
-                          <img src="{{ it.foto_url }}" alt="foto" class="thumb img-thumbnail">
-                        </a>
-                      {% else %}
-                        <span class="text-muted">—</span>
-                      {% endif %}
-                    </td>
+                        <td class="text-center">
+                        {% if it.foto_url %}
+                            <a href="{{ it.foto_full_url|default:it.foto_url }}" target="_blank" rel="noopener">
+                            <img src="{{ it.foto_url }}" alt="foto" class="thumb img-thumbnail" loading="lazy">
+                            </a>
+                        {% else %}
+                            <span class="text-muted">—</span>
+                        {% endif %}
+                        </td>
                   </tr>
                 {% endfor %}
               </tbody>
@@ -205,15 +205,15 @@
                       {% endif %}
                     </td>
                     <td>{{ it.obs|default:"—" }}</td>
-                    <td class="text-center">
-                      {% if it.foto_url %}
-                        <a href="{{ it.foto_url }}" target="_blank" rel="noopener">
-                          <img src="{{ it.foto_url }}" alt="foto" class="thumb img-thumbnail">
-                        </a>
-                      {% else %}
-                        <span class="text-muted">—</span>
-                      {% endif %}
-                    </td>
+                        <td class="text-center">
+                        {% if it.foto_url %}
+                            <a href="{{ it.foto_full_url|default:it.foto_url }}" target="_blank" rel="noopener">
+                            <img src="{{ it.foto_url }}" alt="foto" class="thumb img-thumbnail" loading="lazy">
+                            </a>
+                        {% else %}
+                            <span class="text-muted">—</span>
+                        {% endif %}
+                        </td>
                   </tr>
                 {% endfor %}
               </tbody>

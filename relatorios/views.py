@@ -11,6 +11,8 @@ from django.http import HttpRequest, HttpResponse
 from patrimonio.models import Bem
 from vistoria.models import Inventario, VistoriaBem
 from vistoria.models import split_sala_bloco  # <- já existe no seu app
+from relatorios.utils import thumbnail_url  # adicione o import perto dos demais
+
 
 from .utils import (
     SEI, PORTARIA, PERIODO,
@@ -473,75 +475,74 @@ def mapa_nao_conformidades(request: HttpRequest):
 
 def _coletar_operacional(inv: Inventario, bloco_f: str, sala_f: str, _apenas_pendencias_ignorado: bool):
     """
-    Agora retorna APENAS pendências vistoriadas:
-      - Bens cadastrados (SUAP) que foram vistoriados e estão DIVERGENTES
-      - VistoriaExtra (itens sem registro no SUAP)
-    NÃO lista: não vistoriados, nem 'não encontrados'
+    Retorna APENAS pendências vistoriadas (divergentes) + VistoriaExtra.
+    Agrupamento por BLOCO/SALA da VISTORIA quando houver observação de local,
+    caso contrário cai no SUAP. Fotos usam miniaturas cacheadas.
     """
-    grupos = []
-    extras = []
+    grupos, extras = [], []
 
-    # ---- Bens cadastrados (SUAP) -> SOMENTE DIVERGENTES ----
+    # ---- Bens cadastrados (somente divergentes) ----
     if inv:
-        # Só carrega VistoriaBem do inventário atual
         vb_qs = VistoriaBem.objects.select_related('bem').filter(inventario=inv)
         vb_by_bem_id = {vb.bem_id: vb for vb in vb_qs}
-
         grupo_map = defaultdict(list)
 
         for bem in Bem.objects.all():
-            # Parse "Sala (Bloco)" do texto do SUAP
-            sala_txt = (bem.sala or "").strip()
-            sala_nome, bloco_nome = split_sala_bloco(sala_txt)
-            bloco = (bloco_nome or "—").strip()
-            sala = (sala_nome or "—").strip()
+            vb = vb_by_bem_id.get(bem.id)
+            if not vb:
+                continue  # não vistoriado -> fora
+            # não encontrados -> fora
+            if is_nao_encontrado(vb):
+                continue
+            # só divergentes
+            if not is_divergente(vb):
+                continue
+
+            # Agrupamento: prioriza local da VISTORIA se houver observação
+            if (getattr(vb, "sala_obs_nome", None) or getattr(vb, "sala_obs_bloco", None)) and (not getattr(vb, "confere_local", True)):
+                bloco = (getattr(vb, "sala_obs_bloco", None) or "—").strip()
+                sala = (getattr(vb, "sala_obs_nome", None) or "—").strip()
+            else:
+                # fallback SUAP
+                sala_txt = (getattr(bem, "sala", None) or "").strip()
+                sala_nome, bloco_nome = split_sala_bloco(sala_txt)
+                bloco = (bloco_nome or "—").strip()
+                sala = (sala_nome or "—").strip()
 
             if bloco_f and bloco_f.lower() not in bloco.lower():
                 continue
             if sala_f and sala_f.lower() not in sala.lower():
                 continue
 
-            vb = vb_by_bem_id.get(bem.id)
-            # Exclui: não vistoriados
-            if not vb:
-                continue
-            # Exclui: não encontrados
-            if is_nao_encontrado(vb):
-                continue
-            # Mantém: APENAS divergentes
-            if not is_divergente(vb):
-                continue
-
             diffs = diferencas_detalhadas(vb) or [{"campo": "divergência (não classificada)", "suap": "", "vistoria": ""}]
-            conta_raw = (bem.conta_contabil or "").strip()
+            conta_raw = (getattr(bem, "conta_contabil", None) or "").strip()
             cod = (conta_raw.split("-", 1)[0].strip() if conta_raw else "(sem conta)")
-            tomb = (bem.tombamento or "").strip()
-            desc_bem = (bem.descricao or "").strip()
-            resp_nome = (bem.setor_responsavel or "").strip()  # responsável SUAP (texto)
+            tomb = (getattr(bem, "tombamento", None) or "").strip()
+            desc_bem = (getattr(bem, "descricao", None) or "").strip()
+            resp_suap = (getattr(bem, "setor_responsavel", None) or "").strip()
 
-            # foto (se houver em VistoriaBem)
-            foto_url = None
+            # Miniatura
+            foto_full_url, foto_thumb = None, None
             f = getattr(vb, "foto_marcadagua", None) or getattr(vb, "foto", None)
             if f:
-                try:
-                    foto_url = f.url
-                except Exception:
-                    foto_url = None
+                foto_full_url = getattr(f, "url", None)
+                foto_thumb = thumbnail_url(f, size=(640, 640))  # <= rápido no dashboard
 
             grupo_map[(bloco, sala)].append({
                 "status": "Divergente",
                 "tombamento": tomb,
                 "descricao": desc_bem,
                 "conta": cod,
-                "responsavel": resp_nome,
+                "responsavel": resp_suap,
                 "diffs": diffs,
-                "foto_url": foto_url,
+                "foto_url": foto_thumb or foto_full_url,
+                "foto_full_url": foto_full_url,
             })
 
         for (bloco, sala), itens in sorted(grupo_map.items(), key=lambda kv: (kv[0][0], kv[0][1])):
             grupos.append({"bloco": bloco, "sala": sala, "itens": itens})
 
-    # ---- VistoriaExtra: Sem registro no SUAP (continua aparecendo) ----
+    # ---- VistoriaExtra: sem registro ----
     if inv and VistoriaExtra:
         extras_map = defaultdict(list)
         for ve in VistoriaExtra.objects.filter(inventario=inv).all():
@@ -553,13 +554,11 @@ def _coletar_operacional(inv: Inventario, bloco_f: str, sala_f: str, _apenas_pen
             if sala_f and sala_f.lower() not in sala.lower():
                 continue
 
-            foto_url = None
+            foto_full_url, foto_thumb = None, None
             f = getattr(ve, "foto_marcadagua", None)
             if f:
-                try:
-                    foto_url = f.url
-                except Exception:
-                    foto_url = None
+                foto_full_url = getattr(f, "url", None)
+                foto_thumb = thumbnail_url(f, size=(640, 640))
 
             extras_map[(bloco, sala)].append({
                 "descricao": getattr(ve, "descricao_obs", "") or "",
@@ -568,14 +567,14 @@ def _coletar_operacional(inv: Inventario, bloco_f: str, sala_f: str, _apenas_pen
                 "responsavel": getattr(ve, "responsavel_obs", "") or "",
                 "etiqueta_ausente": (getattr(ve, "etiqueta_possui", True) is False),
                 "obs": getattr(ve, "observacoes", "") or "",
-                "foto_url": foto_url,
+                "foto_url": foto_thumb or foto_full_url,
+                "foto_full_url": foto_full_url,
             })
 
         for (bloco, sala), itens in sorted(extras_map.items(), key=lambda kv: (kv[0][0], kv[0][1])):
             extras.append({"bloco": bloco, "sala": sala, "itens": itens})
 
     return grupos, extras
-
 
 @staff_member_required
 def relatorio_operacional(request: HttpRequest):
