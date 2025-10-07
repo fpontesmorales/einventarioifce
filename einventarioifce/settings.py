@@ -183,25 +183,25 @@ JAZZMIN_SETTINGS = {
     "welcome_sign": "Bem-vindo ao E-Inventário",
     "show_ui_builder": False,
 
-    # Deixa a navegação expandida
+    # Mantém a navegação aberta
     "navigation_expanded": True,
 
+    # Atalhos no topo
     "topmenu_links": [
-        {"name": "Relatório Final", "url": "relatorios:final", "new_window": False, "permissions": []},
-        {"name": "Relatório Operacional", "url": "relatorios:operacional", "new_window": False, "permissions": []},
-        {"name": "Inventário por Conta", "url": "relatorios:inventario_por_conta", "new_window": False, "permissions": []},
-        {"name": "Mapa de NC", "url": "relatorios:mapa_nao_conformidades", "new_window": False, "permissions": []},
+        {"name": "Relatório Final", "url": "relatorios:final", "new_window": False},
+        {"name": "Relatório Operacional", "url": "relatorios:operacional", "new_window": False},
+        {"name": "Exportar fotos", "url": "relatorios:exportar_fotos", "new_window": False},
     ],
+
+    # Links extras sob o app "relatorios" na sidebar
     "custom_links": {
         "relatorios": [
-            {"name": "Relatório Final", "url": "relatorios:final", "icon": "fas fa-print", "permissions": []},
-            {"name": "Relatório Operacional", "url": "relatorios:operacional", "icon": "fas fa-list-check", "permissions": []},
-            {"name": "Inventário por Conta", "url": "relatorios:inventario_por_conta", "icon": "fas fa-table", "permissions": []},
-            {"name": "Mapa de NC", "url": "relatorios:mapa_nao_conformidades", "icon": "fas fa-exclamation-triangle", "permissions": []},
+            {"name": "Relatório Final", "url": "relatorios:final", "icon": "fas fa-print"},
+            {"name": "Relatório Operacional", "url": "relatorios:operacional", "icon": "fas fa-list-check"},
+            {"name": "Exportar fotos", "url": "relatorios:exportar_fotos", "icon": "fas fa-file-archive"},
         ],
     },
 
-    # Ícones (opcional)
     "icons": {
         "relatorios.RelatorioConfig": "fa fa-cog",
         "vistoria.Inventario": "fa fa-clipboard-check",
@@ -210,4 +210,3 @@ JAZZMIN_SETTINGS = {
     },
 }
 JAZZMIN_UI_TWEAKS = {"theme": "yeti"}
-

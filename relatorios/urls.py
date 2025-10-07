@@ -5,11 +5,15 @@ app_name = "relatorios"
 
 urlpatterns = [
     path("", views.index, name="index"),
+
+    # Relatórios principais
     path("final/", views.relatorio_final, name="final"),
+    path("operacional/", views.relatorio_operacional, name="operacional"),
+
+    # Relatórios auxiliares (se você mantiver)
     path("inventario-por-conta/", views.inventario_por_conta, name="inventario_por_conta"),
     path("mapa-nao-conformidades/", views.mapa_nao_conformidades, name="mapa_nao_conformidades"),
 
-    # ETAPA B — Operacional
-    path("operacional/", views.relatorio_operacional, name="operacional"),
-    path("operacional/fotos.zip", views.operacional_fotos_zip, name="operacional_fotos_zip"),
+    # Exportação de fotos (ZIP)
+    path("exportar-fotos/", views.exportar_fotos, name="exportar_fotos"),
 ]
