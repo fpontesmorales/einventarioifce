@@ -15,8 +15,8 @@
   .table.op-table td, .table.op-table th { vertical-align: top; }
 
   /* Miniaturas leves */
-  img.thumb { max-height: 130px; width: auto; display: block; }
-  .thumb-wrap { min-width: 120px; }
+  img.thumb { max-height: 90px; width: auto; display: block; }   /* era 130px */
+  .thumb-wrap { min-width: 110px; max-width: 140px; }
 
   /* Separadores entre grupos */
   .group-sep { border-top: 1px solid #e9ecef; }
@@ -30,6 +30,7 @@
     a[href]:after { content: ""; } /* remove URL após links */
     .container-fluid { padding: 0 !important; }
     .btn, .card-header .badge { display: none !important; }
+    img.thumb { max-height: 120px !important; }
   }
 </style>
 {% endblock %}
@@ -52,12 +53,19 @@
           <strong>Período:</strong> {{ PERIODO }}
         </div>
       </div>
-      <div>
+      <div class="d-flex gap-2">
+        {% if show_images %}
+          <a class="btn btn-outline-secondary" href="?fotos=0">Ocultar fotos</a>
+        {% else %}
+          <a class="btn btn-outline-secondary" href="?fotos=1">Mostrar fotos</a>
+        {% endif %}
         <a class="btn btn-outline-secondary" href="#" onclick="window.print();return false;">Imprimir / PDF</a>
       </div>
     </div>
   </section>
+
   {% include "relatorios/_andamento_cards.html" %}
+
   <!-- Bens cadastrados (divergentes) -->
   {% if grupos and grupos|length %}
     <div class="card mb-3">
@@ -89,7 +97,12 @@
                 {% for it in g.itens %}
                   <tr>
                     <td class="mono">{{ it.tombamento }}</td>
-                    <td>{{ it.descricao|default:"—"|truncatechars:100 }}</td>
+                    <td>
+                      {{ it.descricao|default:"—"|truncatechars:100 }}
+                      {% if not show_images and it.foto_url %}
+                        <a class="ms-2 small" href="{{ it.foto_full_url|default:it.foto_url }}" target="_blank" rel="noopener">[ver foto]</a>
+                      {% endif %}
+                    </td>
                     <td class="op-diffs">
                       {% if it.diffs %}
                         <ul class="mb-0">
@@ -107,9 +120,26 @@
                     </td>
                     <td class="text-center thumb-wrap">
                       {% if it.foto_url %}
-                        <a href="{{ it.foto_full_url|default:it.foto_url }}" target="_blank" rel="noopener">
-                          <img class="thumb" src="{{ it.foto_url }}" alt="Foto">
-                        </a>
+                        {% if show_images %}
+                          <a href="{{ it.foto_full_url|default:it.foto_url }}" target="_blank" rel="noopener">
+                            <picture>
+                              {% if it.print_url %}
+                                <source media="print" srcset="{{ it.print_url }}">
+                              {% endif %}
+                              <img
+                                class="thumb"
+                                src="{{ it.thumb_url|default:it.foto_url }}"
+                                alt="Foto"
+                                loading="lazy"
+                                decoding="async"
+                                width="160" height="120"
+                                style="max-height:130px; width:auto; display:block;"
+                              >
+                            </picture>
+                          </a>
+                        {% else %}
+                          <span class="text-muted">—</span>
+                        {% endif %}
                       {% else %}
                         <span class="text-muted">—</span>
                       {% endif %}
@@ -157,7 +187,12 @@
               <tbody>
                 {% for it in g.itens %}
                   <tr>
-                    <td>{{ it.descricao|default:"—"|truncatechars:100 }}</td>
+                    <td>
+                      {{ it.descricao|default:"—"|truncatechars:100 }}
+                      {% if not show_images and it.foto_url %}
+                        <a class="ms-2 small" href="{{ it.foto_full_url|default:it.foto_url }}" target="_blank" rel="noopener">[ver foto]</a>
+                      {% endif %}
+                    </td>
                     <td class="op-diffs">
                       <ul class="mb-0">
                         {% if it.serie %}<li><strong>Série:</strong> {{ it.serie }}</li>{% endif %}
@@ -169,9 +204,26 @@
                     </td>
                     <td class="text-center thumb-wrap">
                       {% if it.foto_url %}
-                        <a href="{{ it.foto_full_url|default:it.foto_url }}" target="_blank" rel="noopener">
-                          <img class="thumb" src="{{ it.foto_url }}" alt="Foto">
-                        </a>
+                        {% if show_images %}
+                          <a href="{{ it.foto_full_url|default:it.foto_url }}" target="_blank" rel="noopener">
+                            <picture>
+                              {% if it.print_url %}
+                                <source media="print" srcset="{{ it.print_url }}">
+                              {% endif %}
+                              <img
+                                class="thumb"
+                                src="{{ it.thumb_url|default:it.foto_url }}"
+                                alt="Foto"
+                                loading="lazy"
+                                decoding="async"
+                                width="160" height="120"
+                                style="max-height:130px; width:auto; display:block;"
+                              >
+                            </picture>
+                          </a>
+                        {% else %}
+                          <span class="text-muted">—</span>
+                        {% endif %}
                       {% else %}
                         <span class="text-muted">—</span>
                       {% endif %}

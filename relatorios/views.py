@@ -19,6 +19,7 @@ from .utils import (
     parse_conta_contabil, valor_bem,
     is_encontrado, is_nao_encontrado, is_divergente,
     coletar_divergencias, diferencas_detalhadas, export_csv,
+    thumbnail_url,
 )
 
 # Opcional (bens sem registro)
@@ -52,7 +53,6 @@ def _nome_bloco(obj):
     _, bloco = _split_sala_bloco_text(sala_txt)
     if bloco:
         return bloco
-    # alternativas de texto
     return getattr(obj, "bloco_nome", None) or getattr(obj, "predio", None) or ""
 
 def _nome_sala(obj):
@@ -70,7 +70,6 @@ def _top_tipos_divergencia(inv, vb_qs):
             tt = str(t).strip().lower()
             if tt == "não encontrado":
                 continue
-            # só consideramos etiqueta AUSENTE como divergência
             if tt.startswith("etiqueta") and tt != "etiqueta (ausente)":
                 continue
             cont[t] += 1
@@ -83,7 +82,7 @@ def _top_blocos_pendencias(inv, bens_qs, vb_map):
         vb = vb_map.get(bem.id)
         bloco = _nome_bloco(bem) or "—"
         if not vb:
-            pend[bloco] += 1  # não vistoriado = pendência
+            pend[bloco] += 1
             continue
         if is_nao_encontrado(vb):
             pend[bloco] += 1
@@ -118,15 +117,78 @@ def index(request: HttpRequest):
     return redirect('relatorios:final')
 
 
-# ----------------------------- agrega por conta (base SUAP) -----------------------------
+# Preferir sala/bloco OBSERVADOS na vistoria; cair para SUAP se não houver
+def _sala_bloco_para_relatorio(vb, bem):
+    sala_obs = (getattr(vb, "sala_obs_nome", "") or "").strip()
+    bloco_obs = (getattr(vb, "sala_obs_bloco", "") or "").strip()
+    if sala_obs or bloco_obs:
+        return (sala_obs or "—", bloco_obs or "—")
+    sala_nome, bloco_nome = _split_sala_bloco_text(getattr(bem, "sala", "") or "")
+    return (sala_nome or "—", bloco_nome or "—")
+
+def _param_bool(v, default=True):
+    if v is None:
+        return default
+    s = str(v).strip().lower()
+    return s not in {"0", "false", "no", "n", "off"}
+
+
+# ----------------------------- Conta contábil (opção A) -----------------------------
+def _norm_status(s: str) -> str:
+    s = (s or "").strip()
+    if not s:
+        return ""
+    s = unicodedata.normalize("NFKD", s).encode("ASCII", "ignore").decode()
+    s = s.upper()
+    s = re.sub(r"[^A-Z0-9]+", "_", s)
+    return s.strip("_")
+
+_OK_STATUSES = {"ENCONTRADO", "FOUND", "OK", "CONFERIDO"}
+_NAO_STATUSES = {
+    "NAO_ENCONTRADO", "NAOENCONTRADO", "NAO-ENCONTRADO", "NAO ENCONTRADO",
+    "NAO_LOCALIZADO", "NOT_FOUND", "MISSING", "PERDIDO"
+}
+
+def _classificar_vb(vb) -> str:
+    """
+    'ok' | 'nao' | 'div'
+    - Divergente: tem divergências (exceto somente 'não encontrado') ou flag vb.divergente=True.
+    - Não encontrado: status/flags de não encontrado.
+    - Ok: vistoriado sem divergências.
+    """
+    st = _norm_status(getattr(vb, "status", None) or getattr(vb, "situacao", None) or getattr(vb, "resultado", None) or "")
+    if st in _NAO_STATUSES:
+        return "nao"
+    if getattr(vb, "nao_encontrado", None) is True:
+        return "nao"
+    # Divergente (prioridade)
+    if is_divergente(vb) or getattr(vb, "divergente", False):
+        return "div"
+    tipos = (coletar_divergencias(vb) or [])
+    if any(t.strip().lower() != "não encontrado" for t in tipos):
+        return "div"
+    # Encontrado/ok
+    if st in _OK_STATUSES or getattr(vb, "encontrado", None) is True or is_encontrado(vb):
+        return "ok"
+    # fallback neutro -> ok
+    return "ok"
+
+
 def _agrega_por_conta_base_bem(inv: Inventario):
     """
-    1) Soma total por conta a partir dos Bens (SUAP).
-    2) Percorre Vistorias do inventário e cruza pelo Bem -> Conta para
-       montar vistoriados/ok/nao/div por conta.
+    Opção A (detalhado):
+    - Universo: todos os bens elegíveis do SUAP.
+    - Chave: código da conta contábil (antes do hífen), vazio -> '(sem conta)'.
+    - Classificação por bem:
+        * Vistoriado -> 'ok' ou 'div' conforme _classificar_vb
+        * Não vistoriado -> 'nao'   (regra do cliente)
     """
-    # 1) Totais SUAP
-    bens_qs = Bem.objects.all()
+    # 1) Base SUAP
+    try:
+        bens_qs = inv.bens_elegiveis_qs()
+    except Exception:
+        bens_qs = Bem.objects.all()
+
     contas = defaultdict(lambda: {
         'codigo': '',
         'qtd_total': 0, 'val_total': 0.0,
@@ -135,50 +197,50 @@ def _agrega_por_conta_base_bem(inv: Inventario):
         'qtd_nao': 0, 'val_nao': 0.0,
         'qtd_div': 0, 'val_div': 0.0,
     })
-
-    bem_conta = {}  # bem_id -> conta_codigo
-    bem_valor = {}  # bem_id -> valor
+    bem_conta, bem_valor = {}, {}
 
     for bem in bens_qs:
         cod, _ = parse_conta_contabil(getattr(bem, 'conta_contabil', None) or getattr(bem, 'CONTA_CONTABIL', ''))
         cod = cod or '(sem conta)'
         v = valor_bem(bem)
-
         c = contas[cod]
         c['codigo'] = cod
         c['qtd_total'] += 1
         c['val_total'] += v
-
         bem_conta[bem.id] = cod
         bem_valor[bem.id] = v
 
-    # 2) Cruza com Vistoria
-    vb_qs = VistoriaBem.objects.select_related('bem').filter(inventario=inv)
+    # 2) Última vistoria por bem (mapa)
+    vb_qs = (
+        VistoriaBem.objects.select_related('bem')
+        .filter(inventario=inv)
+        .order_by('bem_id', '-id')
+    )
+    vb_map = {}
     for vb in vb_qs:
-        b = vb.bem
-        cod = bem_conta.get(b.id)
-        if not cod:
-            continue  # segurança
+        if vb.bem_id not in vb_map:  # guarda a mais recente por bem
+            vb_map[vb.bem_id] = vb
 
+    # 3) Classifica bem a bem (incluindo não vistoriados como 'nao')
+    for bem_id, cod in bem_conta.items():
         c = contas[cod]
-        c['qtd_vist'] += 1
-        v = bem_valor.get(b.id, 0.0)
-
-        if is_encontrado(vb):
-            c['qtd_ok'] += 1
-            c['val_ok'] += v
-        elif is_nao_encontrado(vb):
-            c['qtd_nao'] += 1
-            c['val_nao'] += v
-        elif is_divergente(vb):
-            c['qtd_div'] += 1
-            c['val_div'] += v
+        v = bem_valor.get(bem_id, 0.0)
+        vb = vb_map.get(bem_id)
+        if vb:
+            c['qtd_vist'] += 1
+            cls = _classificar_vb(vb)
+            if cls == 'ok':
+                c['qtd_ok'] += 1; c['val_ok'] += v
+            elif cls == 'div':
+                c['qtd_div'] += 1; c['val_div'] += v
+            else:
+                c['qtd_nao'] += 1; c['val_nao'] += v
         else:
-            # segurança: trata como não encontrado
+            # não vistoriado -> Não Encontrado (regra)
             c['qtd_nao'] += 1
             c['val_nao'] += v
 
-    # Monta linhas + totais
+    # 4) Linhas + totais
     linhas = []
     totais = {
         'qtd_total': 0, 'val_total': 0.0,
@@ -195,12 +257,9 @@ def _agrega_por_conta_base_bem(inv: Inventario):
             'qtd_total': e['qtd_total'],
             'qtd_vist': e['qtd_vist'],
             'cobertura': round(cobertura, 1),
-            'qtd_ok': e['qtd_ok'],
-            'val_ok': e['val_ok'],
-            'qtd_nao': e['qtd_nao'],
-            'val_nao': e['val_nao'],
-            'qtd_div': e['qtd_div'],
-            'val_div': e['val_div'],
+            'qtd_ok': e['qtd_ok'],   'val_ok': e['val_ok'],
+            'qtd_nao': e['qtd_nao'], 'val_nao': e['val_nao'],
+            'qtd_div': e['qtd_div'], 'val_div': e['val_div'],
         })
         for k in list(totais.keys()):
             totais[k] += e.get(k, 0)
@@ -211,36 +270,20 @@ def _agrega_por_conta_base_bem(inv: Inventario):
         'qtd_total': totais['qtd_total'],
         'qtd_vist': totais['qtd_vist'],
         'cobertura': round(cobertura_geral, 1),
-        'qtd_ok': totais['qtd_ok'],
-        'val_ok': totais['val_ok'],
-        'qtd_nao': totais['qtd_nao'],
-        'val_nao': totais['val_nao'],
-        'qtd_div': totais['qtd_div'],
-        'val_div': totais['val_div'],
+        'qtd_ok': totais['qtd_ok'],   'val_ok': totais['val_ok'],
+        'qtd_nao': totais['qtd_nao'], 'val_nao': totais['val_nao'],
+        'qtd_div': totais['qtd_div'], 'val_div': totais['val_div'],
     }
     return linhas, total_row
 
 
 # ----------------------------- Andamento por Bloco/Sala -----------------------------
 def _build_andamento(inv: Inventario):
-    """
-    Retorna:
-      {
-        'totais': {'elegiveis': X, 'vistoriados': Y, 'pendentes': Z, 'nao_encontrados': W, 'sem_registro': R},
-        'blocos': [
-           {'bloco': 'BLOCO 01', 'elegiveis': 100, 'vistoriados': 80, 'pendentes': 20, 'nao_encontrados': 5, 'sem_registro': 1,
-            'salas': [{'sala': 'BIBLIOTECA', ...}, ...]},
-           ...
-        ]
-      }
-    """
-    # Base SUAP para elegíveis
     try:
         bens_suap = inv.bens_elegiveis_qs()
     except Exception:
         bens_suap = Bem.objects.all()
 
-    # Índices por bloco/sala
     blocos = defaultdict(lambda: defaultdict(lambda: {
         'elegiveis': 0, 'vistoriados': 0, 'nao_encontrados': 0
     }))
@@ -252,7 +295,6 @@ def _build_andamento(inv: Inventario):
         sala_nome = sala_nome or "—"
         blocos[bloco_nome][sala_nome]['elegiveis'] += 1
 
-    # Aplica vistorias
     vb_qs = VistoriaBem.objects.select_related("bem").filter(inventario=inv)
     for vb in vb_qs:
         b = vb.bem
@@ -264,7 +306,6 @@ def _build_andamento(inv: Inventario):
         if is_nao_encontrado(vb):
             blocos[bloco_nome][sala_nome]['nao_encontrados'] += 1
 
-    # Sem registro (extras)
     extras_por_bloco_sala = defaultdict(int)
     if VistoriaExtra:
         for ve in VistoriaExtra.objects.filter(inventario=inv).only("sala_obs_bloco", "sala_obs_nome"):
@@ -272,7 +313,6 @@ def _build_andamento(inv: Inventario):
             s = (ve.sala_obs_nome or "—").strip() or "—"
             extras_por_bloco_sala[(b, s)] += 1
 
-    # Monta estrutura final
     blocos_out = []
     totals = {'elegiveis': 0, 'vistoriados': 0, 'pendentes': 0, 'nao_encontrados': 0, 'sem_registro': 0}
     for bloco_nome in sorted(blocos.keys()):
@@ -283,24 +323,15 @@ def _build_andamento(inv: Inventario):
             pend = max(d['elegiveis'] - d['vistoriados'], 0)
             sem_reg = extras_por_bloco_sala.get((bloco_nome, sala_nome), 0)
             salas.append({
-                'sala': sala_nome,
-                'elegiveis': d['elegiveis'],
-                'vistoriados': d['vistoriados'],
-                'pendentes': pend,
-                'nao_encontrados': d['nao_encontrados'],
-                'sem_registro': sem_reg,
+                'sala': sala_nome, 'elegiveis': d['elegiveis'],
+                'vistoriados': d['vistoriados'], 'pendentes': pend,
+                'nao_encontrados': d['nao_encontrados'], 'sem_registro': sem_reg,
             })
-            b_ag['elegiveis'] += d['elegiveis']
-            b_ag['vistoriados'] += d['vistoriados']
-            b_ag['pendentes'] += pend
-            b_ag['nao_encontrados'] += d['nao_encontrados']
+            b_ag['elegiveis'] += d['elegiveis']; b_ag['vistoriados'] += d['vistoriados']
+            b_ag['pendentes'] += pend; b_ag['nao_encontrados'] += d['nao_encontrados']
             b_ag['sem_registro'] += sem_reg
 
-        blocos_out.append({
-            'bloco': bloco_nome,
-            **b_ag,
-            'salas': salas,
-        })
+        blocos_out.append({ 'bloco': bloco_nome, **b_ag, 'salas': salas })
         for k in totals.keys():
             totals[k] += b_ag[k]
 
@@ -360,9 +391,17 @@ def relatorio_final(request: HttpRequest):
 @staff_member_required
 def relatorio_operacional(request: HttpRequest):
     inv = _inventario_ativo()
+    show_images = True
+    for key in ("fotos", "img", "images"):
+        if key in request.GET:
+            show_images = _param_bool(request.GET.get(key))
+            break
+
     if not inv:
         return render(request, "relatorios/operacional.html", _admin_ctx(request, {
-            "title": "Relatório Operacional", "grupos": [], "extras": [], "andamento": {'totais': {}, 'blocos': []},
+            "title": "Relatório Operacional",
+            "grupos": [], "extras": [], "andamento": {'totais': {}, 'blocos': []},
+            "show_images": show_images,
         }))
 
     andamento = _build_andamento(inv)
@@ -370,16 +409,14 @@ def relatorio_operacional(request: HttpRequest):
     vb_qs = (
         VistoriaBem.objects.select_related("bem")
         .filter(inventario=inv, divergente=True)
-        .order_by("bem__sala", "bem__tombamento")
+        .order_by("sala_obs_bloco", "sala_obs_nome", "bem__sala", "bem__tombamento")
     )
 
     grupos = []
     atual = None
     for vb in vb_qs:
         bem = vb.bem
-        sala_nome, bloco_nome = _split_sala_bloco_text(getattr(bem, "sala", "") or "")
-        bloco = bloco_nome or "—"
-        sala = sala_nome or "—"
+        sala, bloco = _sala_bloco_para_relatorio(vb, bem)
         if not atual or atual["bloco"] != bloco or atual["sala"] != sala:
             atual = {"bloco": bloco, "sala": sala, "itens": []}
             grupos.append(atual)
@@ -387,12 +424,13 @@ def relatorio_operacional(request: HttpRequest):
         diffs = diferencas_detalhadas(vb)
 
         foto = getattr(vb, "foto_marcadagua", None)
-        foto_url = None
+        foto_url = None; thumb_url = None; print_url = None
         if foto and getattr(foto, "name", ""):
-            # só monta URL se existir arquivo
             try:
                 if foto.storage.exists(foto.name):
                     foto_url = foto.url
+                    thumb_url = thumbnail_url(foto, size=(320, 320), quality=58)
+                    print_url = thumbnail_url(foto, size=(640, 640), quality=60)
             except Exception:
                 foto_url = None
 
@@ -402,9 +440,10 @@ def relatorio_operacional(request: HttpRequest):
             "diffs": diffs,
             "foto_url": foto_url,
             "foto_full_url": foto_url,
+            "thumb_url": thumb_url,
+            "print_url": print_url,
         })
 
-    # extras (sem registro)
     extras = []
     if VistoriaExtra:
         ve_qs = VistoriaExtra.objects.filter(inventario=inv).order_by("sala_obs_bloco", "sala_obs_nome", "id")
@@ -417,11 +456,13 @@ def relatorio_operacional(request: HttpRequest):
                 extras.append(atual)
 
             foto = getattr(ve, "foto_marcadagua", None)
-            foto_url = None
+            foto_url = None; thumb_url = None; print_url = None
             if foto and getattr(foto, "name", ""):
                 try:
                     if foto.storage.exists(foto.name):
                         foto_url = foto.url
+                        thumb_url = thumbnail_url(foto, size=(320, 320), quality=58)
+                        print_url = thumbnail_url(foto, size=(640, 640), quality=60)
                 except Exception:
                     foto_url = None
 
@@ -434,6 +475,8 @@ def relatorio_operacional(request: HttpRequest):
                 "obs": (ve.observacoes or "").strip(),
                 "foto_url": foto_url,
                 "foto_full_url": foto_url,
+                "thumb_url": thumb_url,
+                "print_url": print_url,
             })
 
     return render(request, "relatorios/operacional.html", _admin_ctx(request, {
@@ -441,15 +484,18 @@ def relatorio_operacional(request: HttpRequest):
         "grupos": grupos,
         "extras": extras,
         "andamento": andamento,
+        "show_images": show_images,
     }))
 
 
-# ----------------------------- Relatórios auxiliares existentes -----------------------------
+# ----------------------------- Relatórios auxiliares -----------------------------
+@staff_member_required
 @staff_member_required
 def inventario_por_conta(request: HttpRequest):
     inv = _inventario_ativo()
     linhas, total_row = _agrega_por_conta_base_bem(inv) if inv else ([], None)
 
+    # Export CSV
     if request.GET.get('export') == 'csv':
         headers = [
             'Conta (código)', 'Total de Bens', 'Vistoriados (itens)', 'Cobertura (%)',
@@ -474,12 +520,34 @@ def inventario_por_conta(request: HttpRequest):
             ])
         return export_csv(rows, headers, 'inventario_por_conta.csv')
 
+    # ---------- Dados p/ gráficos ----------
+    # Top 12 contas por total de itens
+    top = sorted(linhas, key=lambda l: l['qtd_total'], reverse=True)[:12]
+    charts = {
+        "top_labels": [l["conta_codigo"] for l in top],
+        "top_ok":  [int(l["qtd_ok"])  for l in top],
+        "top_div": [int(l["qtd_div"]) for l in top],
+        "top_nao": [int(l["qtd_nao"]) for l in top],
+        "tot_itens": {
+            "ok":  int(sum(l["qtd_ok"]  for l in linhas)),
+            "div": int(sum(l["qtd_div"] for l in linhas)),
+            "nao": int(sum(l["qtd_nao"] for l in linhas)),
+        },
+        "tot_valor": {
+            "ok":  float(sum(l["val_ok"]  for l in linhas)),
+            "div": float(sum(l["val_div"] for l in linhas)),
+            "nao": float(sum(l["val_nao"] for l in linhas)),
+        }
+    }
+
     return render(request, 'relatorios/inventario_por_conta.html', _admin_ctx(request, {
         'title': 'Inventário por Conta Contábil',
         'inventario': inv,
         'linhas': linhas,
         'total_row': total_row,
+        'charts': charts,
     }))
+
 
 @staff_member_required
 def mapa_nao_conformidades(request: HttpRequest):
@@ -552,23 +620,12 @@ def _safe_folder(bloco: str, sala: str) -> str:
     s = _slugify(sala or "sem_sala", 60)
     return f"{b}/{s}"
 
-# --- ADICIONE acima (perto das outras utils internas) ---
 def _is_divergente_para_zip(vb) -> bool:
-    """
-    Critério mais estrito, próprio para o ZIP:
-    - NAO_ENCONTRADO -> divergente
-    - etiqueta ausente -> divergente
-    - diffs reais (exceto 'observação' e 'divergência (não classificada)') -> divergente
-    """
     from .utils import diferencas_detalhadas, is_nao_encontrado
-
     if is_nao_encontrado(vb):
         return True
-
-    # etiqueta ausente conta como divergência
     if getattr(vb, "etiqueta_possui", True) is False:
         return True
-
     diffs = diferencas_detalhadas(vb) or []
     for d in diffs:
         campo = (d.get("campo") or "").strip().lower()
@@ -586,17 +643,14 @@ def exportar_fotos(request: HttpRequest) -> HttpResponse:
     buffer = io.BytesIO()
     z = zipfile.ZipFile(buffer, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=6)
 
-    # Vistoriados (cadastrados)
     vb_qs = VistoriaBem.objects.select_related("bem").filter(inventario=inv).order_by("bem__sala", "bem__tombamento")
     for vb in vb_qs:
         foto = getattr(vb, "foto_marcadagua", None)
         if not (foto and getattr(foto, "name", "")):
             continue
-        # Caminho seguro sem disparar _require_file
         file_path = Path(settings.MEDIA_ROOT) / foto.name
         if not file_path.exists():
             continue
-
         bem = vb.bem
         sala_nome, bloco_nome = _split_sala_bloco_text(getattr(bem, "sala", "") or "")
         folder = "divergentes" if _is_divergente_para_zip(vb) else "conformes"
@@ -609,7 +663,6 @@ def exportar_fotos(request: HttpRequest) -> HttpResponse:
         except Exception:
             pass
 
-    # Sem registro (extras)
     if VistoriaExtra:
         ve_qs = VistoriaExtra.objects.filter(inventario=inv).order_by("sala_obs_bloco", "sala_obs_nome", "id")
         for ve in ve_qs:

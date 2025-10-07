@@ -11,9 +11,10 @@ _SAFE_FS_RE = re.compile(r'[\\/:*?"<>|]+')  # Windows + Unix
 
 # Pillow já está no requirements; ainda assim tratamos fallback
 try:
-    from PIL import Image
+    from PIL import Image, features
 except Exception:  # pragma: no cover
     Image = None  # type: ignore
+    features = None  # type: ignore
 
 # =============================================================================
 # Metadados fixos (fallback) – podem ser sobrescritos pelo Inventário ativo
@@ -207,20 +208,9 @@ def _sala_bloco_vist(vb) -> Optional[str]:
 
 
 # =============================================================================
-# Coleta de divergências (rótulos) – foco em etiqueta AUSENTE e diffs relevantes
+# Coleta de divergências (rótulos)
 # =============================================================================
 def coletar_divergencias(vb) -> List[str]:
-    """
-    Retorna lista de rótulos de divergências detectadas para um VistoriaBem,
-    checando múltiplos nomes de campos e também diferenças em relação ao Bem.
-
-    Observações de regra:
-      - Localização: só marca quando NÃO confere_local e há valor observado diferente do SUAP.
-      - Série, Descrição, Responsável: só marcam quando NÃO conferem e há valor observado diferente.
-      - Estado: marca quando NÃO confere_estado (não exige comparação textual).
-      - Etiqueta: **somente 'etiqueta (ausente)'** quando etiqueta_possui == False.
-      - 'não encontrado' é retornado como classificação própria.
-    """
     out: List[str] = []
 
     if is_nao_encontrado(vb):
@@ -228,7 +218,7 @@ def coletar_divergencias(vb) -> List[str]:
 
     bem = getattr(vb, "bem", None)
 
-    # 1) Localização (prioriza local vistoriado quando NÃO confere)
+    # 1) Localização
     vist_loc = _sala_bloco_vist(vb)
     suap_loc = _sala_bloco_suap(bem) if bem else "—"
     if vist_loc and not _get(vb, "confere_local", default=True):
@@ -247,27 +237,27 @@ def coletar_divergencias(vb) -> List[str]:
     if vist_desc and not _get(vb, "confere_descricao", default=True) and vist_desc != suap_desc:
         out.append("descrição")
 
-    # 4) Responsável (texto)
+    # 4) Responsável
     suap_resp = (_get(bem, "carga_atual", default="") or "").strip() if bem else ""
     vist_resp = (_get(vb, "responsavel_obs", "responsavel_lido", "responsavel_encontrado", default="") or "").strip()
     if vist_resp and not _get(vb, "confere_responsavel", default=True) and vist_resp != suap_resp:
         out.append("responsável")
 
-    # 5) Estado (apenas quando marcado como não confere)
+    # 5) Estado
     if not _get(vb, "confere_estado", default=True):
         out.append("estado")
 
-    # 6) Etiqueta (só AUSENTE)
+    # 6) Etiqueta AUSENTE
     if _false(vb, "etiqueta_possui", "tem_etiqueta", "possui_etiqueta"):
         out.append("etiqueta (ausente)")
 
-    # 7) Tombamento (se houver leitura que difere do SUAP)
+    # 7) Tombamento divergente
     suap_tombo = (_get(bem, "tombamento", "numero_tombamento", default="") or "").strip() if bem else ""
     vist_tombo = (_get(vb, "tombamento_lido", "tombo_encontrado", default="") or "").strip()
     if vist_tombo and suap_tombo and vist_tombo != suap_tombo:
         out.append("tombamento divergente")
 
-    # 8) Texto livre (observações)
+    # 8) Observações livres
     extra = _get(vb, "divergencias_texto", "divergencia_texto", "observacao_divergencia", "observacoes", "observacao", default=None)
     if extra:
         parts = [p.strip() for p in str(extra).replace("/", ";").replace(",", ";").split(";") if p.strip()]
@@ -289,18 +279,14 @@ def coletar_divergencias(vb) -> List[str]:
 
 
 def is_divergente(vb) -> bool:
-    """
-    Considera 'divergente' quando houver QUALQUER divergência além de apenas 'não encontrado'.
-    """
     tipos = coletar_divergencias(vb)
     return any(t.lower() != "não encontrado" for t in tipos)
 
 
 # =============================================================================
-# Diferenças detalhadas SUAP × Vistoria (para o Mapa de NC)
+# Diferenças detalhadas SUAP × Vistoria
 # =============================================================================
 def _str_responsavel(obj) -> str:
-    """Recupera um nome de responsável amigável tanto do Bem quanto da Vistoria."""
     resp = get_attr(obj, "responsavel", default=None)
     if resp:
         for n in ("nome", "get_full_name", "first_name", "username", "__str__"):
@@ -310,16 +296,10 @@ def _str_responsavel(obj) -> str:
                 except Exception:
                     continue
         return _to_str(resp)
-    # Campos de texto alternativos presentes na Vistoria
     return _to_str(get_attr(obj, "responsavel_lido", "responsavel_encontrado", "responsavel_obs", default=""))
 
 
 def diferencas_detalhadas(vb) -> List[Dict[str, str]]:
-    """
-    Retorna lista de diffs SUAP × Vistoria (apenas quando há diferença real).
-    Campo 'localização' usa "Sala (Bloco)" e PRIORIZA local observado quando NÃO confere_local.
-    Etiqueta: acusa apenas AUSENTE.
-    """
     out: List[Dict[str, str]] = []
     bem = getattr(vb, "bem", None)
 
@@ -341,19 +321,19 @@ def diferencas_detalhadas(vb) -> List[Dict[str, str]]:
     if vist_desc and not _get(vb, "confere_descricao", default=True) and vist_desc != suap_desc:
         out.append({"campo": "descrição", "suap": suap_desc or "—", "vistoria": vist_desc})
 
-    # Responsável (texto)
+    # Responsável
     suap_resp = (_get(bem, "carga_atual", default="") or "").strip() if bem else ""
     vist_resp = (_get(vb, "responsavel_obs", "responsavel_lido", "responsavel_encontrado", default="") or "").strip()
     if vist_resp and not _get(vb, "confere_responsavel", default=True) and vist_resp != suap_resp:
         out.append({"campo": "responsável", "suap": suap_resp or "—", "vistoria": vist_resp})
 
-    # Estado (apenas quando NÃO confere)
+    # Estado
     suap_estado = (_get(bem, "estado", "estado_conservacao", default="") or "").strip() if bem else ""
     if not _get(vb, "confere_estado", default=True):
         vist_estado = (_get(vb, "estado_obs", "estado", "estado_conservacao", default="") or "").strip()
         out.append({"campo": "estado", "suap": suap_estado or "—", "vistoria": vist_estado or "—"})
 
-    # Tombamento divergente (se houve leitura divergente)
+    # Tombamento
     suap_tombo = (_get(bem, "tombamento", "numero_tombamento", default="") or "").strip() if bem else ""
     vist_tombo = (_get(vb, "tombamento_lido", "tombo_encontrado", default="") or "").strip()
     if vist_tombo and suap_tombo and vist_tombo != suap_tombo:
@@ -363,17 +343,17 @@ def diferencas_detalhadas(vb) -> List[Dict[str, str]]:
     if _false(vb, "etiqueta_possui", "tem_etiqueta", "possui_etiqueta"):
         out.append({"campo": "etiqueta (ausente)", "suap": "presente", "vistoria": "ausente"})
 
-    # Não encontrado (como registro informativo)
+    # Não encontrado
     if is_nao_encontrado(vb):
         base = suap_tombo or suap_desc or suap_loc
         out.append({"campo": "não encontrado", "suap": base or "—", "vistoria": "—"})
 
-    # Observações livres
+    # Observações
     extra = _get(vb, "divergencias_texto", "divergencia_texto", "observacao_divergencia", "observacoes", "observacao", default=None)
     if extra:
         out.append({"campo": "observação", "suap": "", "vistoria": _to_str(extra)})
 
-    # Dedup por (campo, suap, vistoria)
+    # Dedup
     seen, result = set(), []
     for d in out:
         key = (d["campo"].lower(), d.get("suap", ""), d.get("vistoria", ""))
@@ -384,40 +364,90 @@ def diferencas_detalhadas(vb) -> List[Dict[str, str]]:
 
 
 # =============================================================================
-# Thumbnails de fotos (salvos em MEDIA_ROOT/vistorias/_thumbs)
+# Thumbnails de fotos — WEBP minúsculo + fallback JPEG (MEDIA_ROOT/vistorias/_thumbs)
 # =============================================================================
-def thumbnail_url(filefield, size=(640, 640), quality=75) -> Optional[str]:
+def _webp_supported() -> bool:
+    try:
+        return bool(features and features.check("webp"))
+    except Exception:
+        return False
+
+def _thumb_dst(rel_dir: str, base: str, size: Tuple[int, int], ext: str) -> str:
+    thumb_name = f"{base}_{size[0]}x{size[1]}.{ext}"
+    thumb_dir = os.path.join(settings.MEDIA_ROOT, rel_dir)
+    os.makedirs(thumb_dir, exist_ok=True)
+    return os.path.join(thumb_dir, thumb_name)
+
+def _thumb_url(rel_dir: str, base: str, size: Tuple[int, int], ext: str) -> str:
+    thumb_name = f"{base}_{size[0]}x{size[1]}.{ext}"
+    return settings.MEDIA_URL + f"{rel_dir}/{thumb_name}"
+
+def _save_thumb(im: "Image.Image", dst_path: str, fmt: str, quality: int) -> None:
+    if fmt.upper() == "WEBP":
+        im.save(dst_path, "WEBP", quality=quality, method=4)  # method 0..6 (melhor compressão = 6; 4 é bom/custo baixo)
+    else:
+        # JPEG progressivo e otmizado
+        im.save(dst_path, "JPEG", quality=quality, optimize=True, progressive=True, subsampling=2)
+
+def thumbnail_pair(filefield, small=(320, 320), medium=(640, 640), q_small=58, q_medium=60) -> Tuple[Optional[str], Optional[str]]:
     """
-    Gera/usa um JPG reduzido em MEDIA_ROOT/vistorias/_thumbs.
-    Recria se a origem for mais nova. Fallback para a URL original.
+    Gera/retorna (thumb_url, print_url) para um filefield.
+    Preferência WEBP; se indisponível, cai para JPEG.
     """
     if not filefield:
-        return None
+        return None, None
+    if Image is None:
+        # fallback: sem Pillow -> use a URL original
+        try:
+            u = filefield.url
+            return u, u
+        except Exception:
+            return None, None
+
     try:
         src_path = filefield.path
         base, _ext = os.path.splitext(os.path.basename(src_path))
         rel_dir = "vistorias/_thumbs"
-        thumb_name = f"{base}_{size[0]}x{size[1]}.jpg"
-        thumb_dir = os.path.join(settings.MEDIA_ROOT, rel_dir)
-        os.makedirs(thumb_dir, exist_ok=True)
-        dst_path = os.path.join(thumb_dir, thumb_name)
 
-        # Se Pillow indisponível, cai para URL original
-        if Image is None:
-            return filefield.url
+        use_webp = _webp_supported()
+        ext_small = "webp" if use_webp else "jpg"
+        ext_medium = "webp" if use_webp else "jpg"
 
-        if (not os.path.exists(dst_path)) or (os.path.getmtime(dst_path) < os.path.getmtime(src_path)):
+        dst_small = _thumb_dst(rel_dir, base, small, ext_small)
+        dst_medium = _thumb_dst(rel_dir, base, medium, ext_medium)
+
+        needs_small = (not os.path.exists(dst_small)) or (os.path.getmtime(dst_small) < os.path.getmtime(src_path))
+        needs_medium = (not os.path.exists(dst_medium)) or (os.path.getmtime(dst_medium) < os.path.getmtime(src_path))
+
+        if needs_small or needs_medium:
             with Image.open(src_path) as im:
+                # remove metadata + normaliza cores
                 im = im.convert("RGB")
-                im.thumbnail(size, Image.LANCZOS)
-                im.save(dst_path, "JPEG", quality=quality, optimize=True)
 
-        return settings.MEDIA_URL + f"{rel_dir}/{thumb_name}"
+                if needs_small:
+                    im_small = im.copy()
+                    im_small.thumbnail(small, Image.LANCZOS)
+                    _save_thumb(im_small, dst_small, "WEBP" if use_webp else "JPEG", q_small)
+
+                if needs_medium:
+                    im_medium = im.copy()
+                    im_medium.thumbnail(medium, Image.LANCZOS)
+                    _save_thumb(im_medium, dst_medium, "WEBP" if use_webp else "JPEG", q_medium)
+
+        return _thumb_url(rel_dir, base, small, ext_small), _thumb_url(rel_dir, base, medium, ext_medium)
+
     except Exception:
+        # Fallback: retorna a URL original
         try:
-            return filefield.url
+            u = filefield.url
+            return u, u
         except Exception:
-            return None
+            return None, None
+
+# Retrocompat (se algum código ainda importar thumbnail_url)
+def thumbnail_url(filefield, size=(320, 320), quality=58) -> Optional[str]:
+    t, _ = thumbnail_pair(filefield, small=size, medium=size, q_small=quality, q_medium=quality)
+    return t
 
 
 # =============================================================================
