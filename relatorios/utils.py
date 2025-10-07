@@ -6,6 +6,9 @@ from datetime import date, datetime
 from django.http import HttpResponse
 from django.conf import settings
 
+import re
+_SAFE_FS_RE = re.compile(r'[\\/:*?"<>|]+')  # Windows + Unix
+
 # Pillow já está no requirements; ainda assim tratamos fallback
 try:
     from PIL import Image
@@ -23,6 +26,12 @@ PERIODO = "02/10/2025 a 31/12/2025"
 # =============================================================================
 # Helpers genéricos
 # =============================================================================
+
+def safe_fs_name(s: str, maxlen: int = 80) -> str:
+    s = (s or "").strip()
+    s = _SAFE_FS_RE.sub("-", s)
+    return s[:maxlen] or "sem-nome"
+
 def get_attr(obj, *names, default=None):
     """Retorna o primeiro atributo existente em 'names'."""
     for n in names:
@@ -239,7 +248,7 @@ def coletar_divergencias(vb) -> List[str]:
         out.append("descrição")
 
     # 4) Responsável (texto)
-    suap_resp = (_get(bem, "setor_responsavel", "responsavel", default="") or "").strip() if bem else ""
+    suap_resp = (_get(bem, "carga_atual", default="") or "").strip() if bem else ""
     vist_resp = (_get(vb, "responsavel_obs", "responsavel_lido", "responsavel_encontrado", default="") or "").strip()
     if vist_resp and not _get(vb, "confere_responsavel", default=True) and vist_resp != suap_resp:
         out.append("responsável")
@@ -333,7 +342,7 @@ def diferencas_detalhadas(vb) -> List[Dict[str, str]]:
         out.append({"campo": "descrição", "suap": suap_desc or "—", "vistoria": vist_desc})
 
     # Responsável (texto)
-    suap_resp = (_get(bem, "setor_responsavel", default="") or "").strip() if bem else ""
+    suap_resp = (_get(bem, "carga_atual", default="") or "").strip() if bem else ""
     vist_resp = (_get(vb, "responsavel_obs", "responsavel_lido", "responsavel_encontrado", default="") or "").strip()
     if vist_resp and not _get(vb, "confere_responsavel", default=True) and vist_resp != suap_resp:
         out.append({"campo": "responsável", "suap": suap_resp or "—", "vistoria": vist_resp})

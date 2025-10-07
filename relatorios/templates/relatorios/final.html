@@ -1,317 +1,255 @@
 {% extends "admin/base_site.html" %}
 {% load static relatorio_extras %}
+
 {% block extrastyle %}
+{{ block.super }}
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css">
 <link rel="stylesheet" href="{% static 'relatorios/final.css' %}?v={{ total_row.qtd_total|default:0 }}">
+<style>
+  /* Ajustes de impressão: tira rodapés/menus do admin e deixa a página limpa */
+  @media print {
+    footer, .copyright, .sidebar, .navbar, .breadcrumbs, .sticky, .object-tools { display: none !important; }
+    .container-fluid { padding: 0 !important; }
+  }
+  /* Pequenos toques visuais locais (o grosso está no final.css) */
+  .section-card + .section-card { margin-top: 1rem; }
+  .card-header h2, .card-header h3 { margin: 0; font-size: 1.1rem; }
+  .muted { color: #6c757d; }
+</style>
 {% endblock %}
+
 {% block content %}
+<main class="container-fluid py-3 relatorios-main">
 
-<div class="container-xxl py-3">
-
-  <!-- Cabeçalho -->
-  <div class="card mb-3 shadow-sm">
-    <div class="card-body d-flex flex-wrap justify-content-between align-items-start gap-3">
-      <div class="d-flex align-items-start gap-3">
-        {% if cfg and cfg.logo %}
-          <img src="{{ cfg.logo.url }}" alt="Logo" style="height:64px; width:auto; object-fit:contain;">
-        {% endif %}
-        <div>
-          <h1 class="h3 mb-1">Inventário — Relatório Final</h1>
-          <div class="text-muted small">IFCE – Campus Caucaia</div>
-          <div class="text-muted small mt-1">
-            <strong>SEI:</strong> {{ SEI }} &nbsp;|&nbsp;
-            <strong>Portaria:</strong> {{ PORTARIA }} &nbsp;|&nbsp;
-            <strong>Período:</strong> {{ PERIODO }}
-          </div>
+  <!-- Cabeçalho institucional -->
+  <section class="py-3 border-bottom mb-3">
+    <div class="d-flex align-items-center gap-3">
+      {% if cfg and cfg.logo %}
+        <img src="{{ cfg.logo.url }}" alt="Logo" style="height:64px; width:auto;">
+      {% endif %}
+      <div class="flex-grow-1">
+        <h1 class="h4 mb-1">Inventário — Relatório Final</h1>
+        <div class="text-muted">IFCE – Campus Caucaia</div>
+        <div class="small mt-1">
+          <strong>SEI:</strong> {{ SEI }} &nbsp;|&nbsp;
+          <strong>Portaria:</strong> {{ PORTARIA }} &nbsp;|&nbsp;
+          <strong>Período:</strong> {{ PERIODO }}
         </div>
       </div>
-      <div class="d-print-none">
-        <a class="btn btn-primary" href="#" onclick="window.print();return false;">
-          <i class="fa fa-print me-1"></i> Imprimir / PDF
-        </a>
+      <div>
+        <a class="btn btn-outline-secondary" href="#" onclick="window.print();return false;">Imprimir / PDF</a>
       </div>
     </div>
-  </div>
+  </section>
 
   <!-- Apresentação -->
   {% if cfg and cfg.texto_apresentacao %}
-  <div class="card mb-3 shadow-sm">
-    <div class="card-header fw-semibold">Apresentação</div>
+  <section class="section-card card">
+    <div class="card-header"><h2>Apresentação</h2></div>
     <div class="card-body">
-      <div style="white-space: pre-wrap;">{% render_vars cfg.texto_apresentacao %}</div>
+      <p style="white-space: pre-wrap;">{% render_vars cfg.texto_apresentacao %}</p>
     </div>
-  </div>
+  </section>
   {% endif %}
 
   <!-- Metodologia -->
   {% if cfg and cfg.texto_metodologia %}
-  <div class="card mb-4 shadow-sm">
-    <div class="card-header fw-semibold">Metodologia</div>
+  <section class="section-card card">
+    <div class="card-header"><h2>Metodologia</h2></div>
     <div class="card-body">
-      <div style="white-space: pre-wrap;">{% render_vars cfg.texto_metodologia %}</div>
+      <p style="white-space: pre-wrap;">{% render_vars cfg.texto_metodologia %}</p>
     </div>
-  </div>
+  </section>
   {% endif %}
 
   <!-- Resultados -->
-  <div class="card mb-4 shadow-sm">
-    <div class="card-header fw-semibold">Resultados</div>
+  <section class="section-card card">
+    <div class="card-header"><h2>Resultados</h2></div>
     <div class="card-body">
 
-      <!-- Badges de Pendências -->
-      <div class="mb-3 d-flex flex-wrap gap-2">
-        <span class="badge bg-danger-subtle text-danger border border-danger-subtle">
-          Pendências críticas (P1): <strong class="ms-1">{{ sumarios.sum_p.p1 }}</strong>
-        </span>
-        <span class="badge bg-warning-subtle text-warning border border-warning-subtle">
-          Pendências altas (P2): <strong class="ms-1">{{ sumarios.sum_p.p2 }}</strong>
-        </span>
-        <span class="badge bg-secondary-subtle text-secondary border border-secondary-subtle">
-          Pendências médias (P3): <strong class="ms-1">{{ sumarios.sum_p.p3 }}</strong>
-        </span>
-        <span class="badge bg-dark-subtle text-dark border border-dark-subtle">
-          Sem registro no SUAP: <strong class="ms-1">{{ sumarios.no_registro }}</strong>
-        </span>
-      </div>
-      <div class="text-muted small mb-4">
-        P1 = Não encontrados, Tombamento, Etiqueta ausente ·
-        P2 = Localização, Série, Responsável ·
-        P3 = Descrição, Marca/Modelo, Estado
-      </div>
-
-      <!-- KPIs -->
+      <!-- KPIs principais -->
       {% if kpis %}
-      <div class="row g-3 row-cols-1 row-cols-sm-2 row-cols-lg-3">
-        <div class="col">
-          <div class="card h-100 border-0 shadow-sm">
-            <div class="card-body">
-              <div class="text-muted small">Não encontrados</div>
-              <div class="display-6 fw-semibold">{{ kpis.nao_itens }}</div>
-              <div class="text-muted small">({{ kpis.nao_valor|br_currency }})</div>
-            </div>
-          </div>
+      <div class="kpi-grid mb-3">
+        <div class="kpi kpi-alert">
+          <div class="kpi-label">Não encontrados</div>
+          <div class="kpi-value">{{ kpis.nao_itens }} <span class="sub">({{ kpis.nao_valor|br_currency }})</span></div>
         </div>
-        <div class="col">
-          <div class="card h-100 border-0 shadow-sm">
-            <div class="card-body">
-              <div class="text-muted small">Cobertura</div>
-              <div class="display-6 fw-semibold">{{ kpis.cobertura|br_percent }}</div>
-              <div class="text-muted small">itens vistoriados / total SUAP</div>
-            </div>
-          </div>
+        <div class="kpi kpi-emph">
+          <div class="kpi-label">Cobertura</div>
+          <div class="kpi-value">{{ kpis.cobertura|br_percent }}</div>
         </div>
-        <div class="col">
-          <div class="card h-100 border-0 shadow-sm">
-            <div class="card-body">
-              <div class="text-muted small">Vistoriados</div>
-              <div class="display-6 fw-semibold">{{ kpis.vist_itens }}</div>
-              <div class="text-muted small">itens</div>
-            </div>
-          </div>
+        <div class="kpi">
+          <div class="kpi-label">Vistoriados</div>
+          <div class="kpi-value">{{ kpis.vist_itens }}</div>
         </div>
-        <div class="col">
-          <div class="card h-100 border-0 shadow-sm">
-            <div class="card-body">
-              <div class="text-muted small">Divergentes</div>
-              <div class="display-6 fw-semibold">{{ kpis.div_itens }}</div>
-              <div class="text-muted small">({{ kpis.div_valor|br_currency }})</div>
-            </div>
-          </div>
+        <div class="kpi kpi-warn">
+          <div class="kpi-label">Divergentes</div>
+          <div class="kpi-value">{{ kpis.div_itens }} <span class="sub">({{ kpis.div_valor|br_currency }})</span></div>
         </div>
-        <div class="col">
-          <div class="card h-100 border-0 shadow-sm">
-            <div class="card-body">
-              <div class="text-muted small">SUAP (itens)</div>
-              <div class="display-6 fw-semibold">{{ kpis.suap_itens }}</div>
-              <div class="text-muted small">&nbsp;</div>
-            </div>
-          </div>
+        <div class="kpi">
+          <div class="kpi-label">SUAP (itens)</div>
+          <div class="kpi-value">{{ kpis.suap_itens }}</div>
         </div>
-        <div class="col">
-          <div class="card h-100 border-0 shadow-sm">
-            <div class="card-body">
-              <div class="text-muted small">SUAP (R$)</div>
-              <div class="display-6 fw-semibold">{{ kpis.suap_valor|br_currency }}</div>
-              <div class="text-muted small">&nbsp;</div>
-            </div>
-          </div>
+        <div class="kpi">
+          <div class="kpi-label">SUAP (R$)</div>
+          <div class="kpi-value">{{ kpis.suap_valor|br_currency }}</div>
         </div>
       </div>
       {% else %}
-        <p class="text-muted">Sem dados para o inventário ativo.</p>
+        <p>Sem dados para o inventário ativo.</p>
       {% endif %}
 
       <!-- Aviso de amostragem baixa -->
       {% if kpis and kpis.cobertura < 5 %}
-        <div class="alert alert-info mt-3">
+        <div class="alert alert-info">
           Cobertura preliminar (&lt; 5%). Gráficos sintéticos serão exibidos quando houver amostra suficiente.
         </div>
       {% endif %}
 
-      <!-- Gráficos (progress bars Bootstrap) -->
+      <!-- Gráficos (somente se cobertura >= 5%) -->
       {% if kpis and kpis.cobertura >= 5 %}
-      <div class="row g-3 mt-3">
+      <div class="charts-grid">
         <!-- Cobertura por conta -->
-        <div class="col-12 col-lg-4">
-          <div class="card h-100 border-0 shadow-sm">
-            <div class="card-header fw-semibold">Cobertura por Conta (top 12)</div>
-            <div class="card-body">
-              {% if graficos.cobertura_por_conta %}
-                <div class="vstack gap-2">
-                  {% for it in graficos.cobertura_por_conta %}
-                    <div>
-                      <div class="d-flex justify-content-between small">
-                        <span class="font-monospace">{{ it.conta }}</span>
-                        <span class="text-muted">{{ it.cobertura|floatformat:1 }}%</span>
-                      </div>
-                      <div class="progress" style="height: 8px;">
-                        <div class="progress-bar" role="progressbar"
-                             style="width: {{ it.cobertura|floatformat:1 }}%;"></div>
-                      </div>
-                    </div>
-                  {% endfor %}
+        <div class="chart-card">
+          <h3>Cobertura por Conta (top 12)</h3>
+          {% if graficos.cobertura_por_conta %}
+            <div class="barlist">
+              {% for it in graficos.cobertura_por_conta %}
+                <div class="barrow">
+                  <span class="barlabel">{{ it.conta }}</span>
+                  <span class="barwrap">
+                    <span class="bar" style="width: {{ it.cobertura|floatformat:1 }}%;"></span>
+                    <span class="barpct">{{ it.cobertura|floatformat:1 }}%</span>
+                  </span>
                 </div>
-              {% else %}
-                <p class="text-muted mb-0">Sem contas para exibir.</p>
-              {% endif %}
+              {% endfor %}
             </div>
-          </div>
+          {% else %}
+            <p class="muted">Sem contas para exibir.</p>
+          {% endif %}
         </div>
 
         <!-- Top 5 tipos -->
-        <div class="col-12 col-lg-4">
-          <div class="card h-100 border-0 shadow-sm">
-            <div class="card-header fw-semibold">Top 5 tipos de divergência</div>
-            <div class="card-body">
-              {% if graficos.top_tipos and graficos.top_tipos.0.qtd %}
-                <div class="vstack gap-2">
-                  {% for it in graficos.top_tipos %}
-                    {% if it.rotulo and it.rotulo|lower != 'divergência (não classificada)' %}
-                      {% widthratio it.qtd graficos.top_tipos.0.qtd 100 as pct %}
-                      <div>
-                        <div class="d-flex justify-content-between small">
-                          <span>{{ it.rotulo }}</span>
-                          <span class="text-muted">{{ it.qtd }}</span>
-                        </div>
-                        <div class="progress" style="height: 8px;">
-                          <div class="progress-bar bg-warning" role="progressbar" style="width: {{ pct }}%;"></div>
-                        </div>
-                      </div>
-                    {% endif %}
-                  {% endfor %}
-                </div>
-              {% else %}
-                <p class="text-muted mb-0">Sem divergências suficientes para exibir.</p>
-              {% endif %}
+        <div class="chart-card">
+          <h3>Top 5 tipos de divergência</h3>
+          {% if graficos.top_tipos and graficos.top_tipos.0.qtd %}
+            <div class="barlist">
+              {% for it in graficos.top_tipos %}
+                {% if it.rotulo and it.rotulo|lower != 'divergência (não classificada)' %}
+                  {% widthratio it.qtd graficos.top_tipos.0.qtd 100 as pct %}
+                  <div class="barrow">
+                    <span class="barlabel">{{ it.rotulo }}</span>
+                    <span class="barwrap">
+                      <span class="bar" style="width: {{ pct }}%;"></span>
+                      <span class="barpct">{{ it.qtd }}</span>
+                    </span>
+                  </div>
+                {% endif %}
+              {% endfor %}
             </div>
-          </div>
+          {% else %}
+            <p class="muted">Sem divergências suficientes para exibir.</p>
+          {% endif %}
         </div>
 
         <!-- Top 5 blocos -->
-        <div class="col-12 col-lg-4">
-          <div class="card h-100 border-0 shadow-sm">
-            <div class="card-header fw-semibold">Top 5 blocos com pendências</div>
-            <div class="card-body">
-              {% if graficos.top_blocos and graficos.top_blocos.0.qtd %}
-                <div class="vstack gap-2">
-                  {% for it in graficos.top_blocos %}
-                    {% widthratio it.qtd graficos.top_blocos.0.qtd 100 as pctb %}
-                    {% if it.bloco and it.bloco != '—' %}
-                      <div>
-                        <div class="d-flex justify-content-between small">
-                          <span>{{ it.bloco|default:"(sem identificação)" }}</span>
-                          <span class="text-muted">{{ it.qtd }}</span>
-                        </div>
-                        <div class="progress" style="height: 8px;">
-                          <div class="progress-bar bg-danger" role="progressbar" style="width: {{ pctb }}%;"></div>
-                        </div>
-                      </div>
-                    {% endif %}
-                  {% endfor %}
+        <div class="chart-card">
+          <h3>Top 5 blocos com pendências</h3>
+          {% if graficos.top_blocos and graficos.top_blocos.0.qtd %}
+            <div class="barlist">
+              {% for it in graficos.top_blocos %}
+                {% widthratio it.qtd graficos.top_blocos.0.qtd 100 as pctb %}
+                {% if it.bloco and it.bloco != '—' %}
+                <div class="barrow">
+                  <span class="barlabel">{{ it.bloco|default:"(sem identificação)" }}</span>
+                  <span class="barwrap">
+                    <span class="bar" style="width: {{ pctb }}%;"></span>
+                    <span class="barpct">{{ it.qtd }}</span>
+                  </span>
                 </div>
-              {% else %}
-                <p class="text-muted mb-0">Sem pendências por bloco para exibir.</p>
-              {% endif %}
+                {% endif %}
+              {% endfor %}
             </div>
-          </div>
+          {% else %}
+            <p class="muted">Sem pendências por bloco para exibir.</p>
+          {% endif %}
         </div>
       </div>
       {% endif %}
 
-      <!-- Quadro por Conta -->
-      <div class="card mt-4 border-0 shadow-sm">
-        <div class="card-header fw-semibold">Quadro por Conta Contábil</div>
-        <div class="card-body p-0">
-          <div class="table-responsive">
-            <table class="table table-sm table-striped table-hover align-middle mb-0">
-              <thead class="table-light">
+      <!-- Quadro por conta (tabela) -->
+      <div class="mt-4">
+        <h3>Quadro por Conta Contábil</h3>
+        <div class="table-responsive">
+          <table class="table table-striped table-sm align-middle listing fullwidth">
+            <thead class="table-light">
+              <tr>
+                <th>Conta</th>
+                <th class="text-end">Total SUAP</th>
+                <th class="text-end">Vistoriados</th>
+                <th class="text-end">Cobertura</th>
+                <th class="text-end">Encontrados</th>
+                <th class="text-end">Valor OK (R$)</th>
+                <th class="text-end">Não-enc.</th>
+                <th class="text-end">Valor Não-enc. (R$)</th>
+                <th class="text-end">Divergentes</th>
+                <th class="text-end">Valor Div. (R$)</th>
+                <th class="text-end">Valor total (R$)</th>
+                <th class="text-end">% Não-enc.</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for l in linhas %}
+                {% widthratio l.qtd_nao l.qtd_total 100 as pct_nao %}
                 <tr>
-                  <th>Conta</th>
-                  <th class="text-end">Total SUAP</th>
-                  <th class="text-end">Vistoriados</th>
-                  <th class="text-end">Cobertura</th>
-                  <th class="text-end">Encontrados</th>
-                  <th class="text-end">Valor OK (R$)</th>
-                  <th class="text-end">Não-enc.</th>
-                  <th class="text-end">Valor Não-enc. (R$)</th>
-                  <th class="text-end">Divergentes</th>
-                  <th class="text-end">Valor Div. (R$)</th>
-                  <th class="text-end">Valor total (R$)</th>
-                  <th class="text-end">% Não-enc.</th>
+                  <td class="mono nowrap">{{ l.conta_codigo }}</td>
+                  <td class="text-end">{{ l.qtd_total }}</td>
+                  <td class="text-end">{{ l.qtd_vist }}</td>
+                  <td class="text-end">{{ l.cobertura|br_percent }}</td>
+                  <td class="text-end">{{ l.qtd_ok }}</td>
+                  <td class="text-end">{{ l.val_ok|br_currency }}</td>
+                  <td class="text-end">{{ l.qtd_nao }}</td>
+                  <td class="text-end">{{ l.val_nao|br_currency }}</td>
+                  <td class="text-end">{{ l.qtd_div }}</td>
+                  <td class="text-end">{{ l.val_div|br_currency }}</td>
+                  <td class="text-end">{{ l.val_ok|add:l.val_nao|add:l.val_div|br_currency }}</td>
+                  <td class="text-end">{{ pct_nao }}%</td>
                 </tr>
-              </thead>
-              <tbody>
-                {% for l in linhas %}
-                  {% widthratio l.qtd_nao l.qtd_total 100 as pct_nao %}
-                  <tr>
-                    <td class="font-monospace text-nowrap">{{ l.conta_codigo }}</td>
-                    <td class="text-end">{{ l.qtd_total }}</td>
-                    <td class="text-end">{{ l.qtd_vist }}</td>
-                    <td class="text-end">{{ l.cobertura|br_percent }}</td>
-                    <td class="text-end">{{ l.qtd_ok }}</td>
-                    <td class="text-end">{{ l.val_ok|br_currency }}</td>
-                    <td class="text-end">{{ l.qtd_nao }}</td>
-                    <td class="text-end">{{ l.val_nao|br_currency }}</td>
-                    <td class="text-end">{{ l.qtd_div }}</td>
-                    <td class="text-end">{{ l.val_div|br_currency }}</td>
-                    <td class="text-end">{{ l.val_ok|add:l.val_nao|add:l.val_div|br_currency }}</td>
-                    <td class="text-end">{{ pct_nao }}%</td>
-                  </tr>
-                {% empty %}
-                  <tr><td colspan="12" class="text-muted">Sem dados.</td></tr>
-                {% endfor %}
-                {% if total_row %}
-                  {% widthratio total_row.qtd_nao total_row.qtd_total 100 as pct_nao_total %}
-                  <tr class="table-secondary">
-                    <td><strong>{{ total_row.conta_codigo }}</strong></td>
-                    <td class="text-end"><strong>{{ total_row.qtd_total }}</strong></td>
-                    <td class="text-end"><strong>{{ total_row.qtd_vist }}</strong></td>
-                    <td class="text-end"><strong>{{ total_row.cobertura|br_percent }}</strong></td>
-                    <td class="text-end"><strong>{{ total_row.qtd_ok }}</strong></td>
-                    <td class="text-end"><strong>{{ total_row.val_ok|br_currency }}</strong></td>
-                    <td class="text-end"><strong>{{ total_row.qtd_nao }}</strong></td>
-                    <td class="text-end"><strong>{{ total_row.val_nao|br_currency }}</strong></td>
-                    <td class="text-end"><strong>{{ total_row.qtd_div }}</strong></td>
-                    <td class="text-end"><strong>{{ total_row.val_div|br_currency }}</strong></td>
-                    <td class="text-end"><strong>{{ total_row.val_ok|add:total_row.val_nao|add:total_row.val_div|br_currency }}</strong></td>
-                    <td class="text-end"><strong>{{ pct_nao_total }}%</strong></td>
-                  </tr>
-                {% endif %}
-              </tbody>
-            </table>
-          </div>
+              {% empty %}
+                <tr><td colspan="12">Sem dados.</td></tr>
+              {% endfor %}
+              {% if total_row %}
+                {% widthratio total_row.qtd_nao total_row.qtd_total 100 as pct_nao_total %}
+                <tr class="table-secondary">
+                  <td><strong>{{ total_row.conta_codigo }}</strong></td>
+                  <td class="text-end"><strong>{{ total_row.qtd_total }}</strong></td>
+                  <td class="text-end"><strong>{{ total_row.qtd_vist }}</strong></td>
+                  <td class="text-end"><strong>{{ total_row.cobertura|br_percent }}</strong></td>
+                  <td class="text-end"><strong>{{ total_row.qtd_ok }}</strong></td>
+                  <td class="text-end"><strong>{{ total_row.val_ok|br_currency }}</strong></td>
+                  <td class="text-end"><strong>{{ total_row.qtd_nao }}</strong></td>
+                  <td class="text-end"><strong>{{ total_row.val_nao|br_currency }}</strong></td>
+                  <td class="text-end"><strong>{{ total_row.qtd_div }}</strong></td>
+                  <td class="text-end"><strong>{{ total_row.val_div|br_currency }}</strong></td>
+                  <td class="text-end"><strong>{{ total_row.val_ok|add:total_row.val_nao|add:total_row.val_div|br_currency }}</strong></td>
+                  <td class="text-end"><strong>{{ pct_nao_total }}%</strong></td>
+                </tr>
+              {% endif %}
+            </tbody>
+          </table>
         </div>
       </div>
 
-      <!-- Checklist + Tops -->
-      {% if sumarios.checklist %}
+      <!-- Checklist (vistoriados) + Tops de não encontrados -->
+      {% if sumarios and sumarios.checklist %}
       <div class="row g-3 mt-3">
-        <div class="col-12 col-xl-6">
-          <div class="card h-100 border-0 shadow-sm">
-            <div class="card-header fw-semibold">Checklist (somente vistoriados)</div>
+        <div class="col-md-6">
+          <div class="card h-100">
+            <div class="card-header"><h3>Checklist (somente vistoriados)</h3></div>
             <div class="card-body">
-              <p class="text-muted small">NI (não vistoriado) foi excluído desta tabela para evidenciar o comparativo Confere × Divergente.</p>
+              <p class="muted small">NI (não vistoriado) foi excluído desta tabela para evidenciar o comparativo Confere × Divergente.</p>
               <div class="table-responsive">
-                <table class="table table-sm table-striped table-hover align-middle mb-0">
+                <table class="table table-sm align-middle">
                   <thead class="table-light">
                     <tr>
                       <th>Item</th>
@@ -339,152 +277,127 @@
                   </tbody>
                 </table>
               </div>
-              <p class="text-muted small mt-2">NI = não vistoriado (apresentado no KPI de cobertura).</p>
+              <p class="muted small mb-0">NI = não vistoriado (apresentado no KPI de cobertura).</p>
             </div>
           </div>
         </div>
 
-        <div class="col-12 col-xl-6">
-          <div class="card h-100 border-0 shadow-sm">
-            <div class="card-header fw-semibold">Não encontrados — Top 5</div>
+        <div class="col-md-6">
+          <div class="card h-100">
+            <div class="card-header"><h3>Não encontrados — Top 5</h3></div>
             <div class="card-body">
-              <div class="row g-3">
-                <div class="col-12 col-lg-6">
-                  <h6 class="text-muted">por Conta</h6>
+              <div class="row gy-2">
+                <div class="col-sm-6">
+                  <h4 class="h6">por Conta</h4>
                   {% if sumarios.top_nao_contas %}
-                    <div class="vstack gap-2">
+                    <div class="barlist">
                       {% for it in sumarios.top_nao_contas %}
                         {% widthratio it.qtd sumarios.top_nao_contas.0.qtd 100 as pn %}
-                        <div>
-                          <div class="d-flex justify-content-between small">
-                            <span class="font-monospace">{{ it.conta }}</span>
-                            <span class="text-muted">{{ it.qtd }}</span>
-                          </div>
-                          <div class="progress" style="height: 8px;">
-                            <div class="progress-bar bg-secondary" role="progressbar" style="width: {{ pn }}%;"></div>
-                          </div>
+                        <div class="barrow">
+                          <span class="barlabel">{{ it.conta }}</span>
+                          <span class="barwrap">
+                            <span class="bar" style="width: {{ pn }}%;"></span>
+                            <span class="barpct">{{ it.qtd }}</span>
+                          </span>
                         </div>
                       {% endfor %}
                     </div>
                   {% else %}
-                    <p class="text-muted mb-0">Sem dados.</p>
+                    <p class="muted">Sem dados.</p>
                   {% endif %}
                 </div>
-                <div class="col-12 col-lg-6">
-                  <h6 class="text-muted">por Bloco</h6>
+                <div class="col-sm-6">
+                  <h4 class="h6">por Bloco</h4>
                   {% if sumarios.top_nao_blocos %}
-                    <div class="vstack gap-2">
+                    <div class="barlist">
                       {% for it in sumarios.top_nao_blocos %}
                         {% widthratio it.qtd sumarios.top_nao_blocos.0.qtd 100 as pb %}
-                        <div>
-                          <div class="d-flex justify-content-between small">
-                            <span>{{ it.bloco }}</span>
-                            <span class="text-muted">{{ it.qtd }}</span>
-                          </div>
-                          <div class="progress" style="height: 8px;">
-                            <div class="progress-bar bg-dark" role="progressbar" style="width: {{ pb }}%;"></div>
-                          </div>
+                        <div class="barrow">
+                          <span class="barlabel">{{ it.bloco }}</span>
+                          <span class="barwrap">
+                            <span class="bar" style="width: {{ pb }}%;"></span>
+                            <span class="barpct">{{ it.qtd }}</span>
+                          </span>
                         </div>
                       {% endfor %}
                     </div>
                   {% else %}
-                    <p class="text-muted mb-0">Sem dados.</p>
+                    <p class="muted">Sem dados.</p>
                   {% endif %}
                 </div>
               </div>
             </div>
           </div>
         </div>
-
       </div>
       {% endif %}
 
     </div>
-  </div>
+  </section>
 
-  <!-- Encaminhamentos / Plano de Ação -->
+  <!-- Encaminhamentos e Plano de Ação -->
   {% if cfg and cfg.texto_conclusao %}
-  <div class="card mb-4 shadow-sm">
-    <div class="card-header fw-semibold">Encaminhamentos e Plano de Ação</div>
+  <section class="section-card card">
+    <div class="card-header"><h2>Encaminhamentos e Plano de Ação</h2></div>
     <div class="card-body">
-      <div style="white-space: pre-wrap;">{% render_vars cfg.texto_conclusao %}</div>
+      <p style="white-space: pre-wrap;">{% render_vars cfg.texto_conclusao %}</p>
     </div>
-  </div>
+  </section>
   {% endif %}
 
   <!-- Assinaturas -->
   {% if cfg and cfg.assinantes %}
-  <div class="card mb-4 shadow-sm">
-    <div class="card-header fw-semibold">Assinaturas</div>
+  <section class="section-card card">
+    <div class="card-header"><h2>Assinaturas</h2></div>
     <div class="card-body">
-      <div class="row g-4">
+      <div class="row row-cols-1 row-cols-md-2 g-4">
         {% for a in cfg.assinantes %}
-        <div class="col-12 col-md-6 col-xl-4">
-          <div class="text-center py-4">
-            <div class="border-bottom mb-2" style="height: 42px;"></div>
-            <div class="fw-semibold">{{ a.nome }}</div>
-            <div class="text-muted small">{{ a.cargo }}</div>
+        <div class="col">
+          <div class="p-3 border rounded text-center" style="min-height:120px;">
+            <div style="margin-top:40px;">______________________________________________</div>
+            <div><strong>{{ a.nome }}</strong></div>
+            <div class="muted">{{ a.cargo }}</div>
           </div>
         </div>
         {% endfor %}
       </div>
     </div>
-  </div>
+  </section>
   {% endif %}
 
-  <!-- Configurações (oculto na impressão) -->
+  <!-- Configurações (recolhidas; somem na impressão) -->
   {% if form %}
-  <div class="card mb-4 shadow-sm d-print-none">
-    <div class="card-header fw-semibold">Configurações do relatório</div>
-    <div class="card-body">
-      <form method="post" enctype="multipart/form-data" class="row g-3">
+  <details class="config no-print mt-3">
+    <summary>Editar configurações do relatório</summary>
+    <div class="relatorios-sidebar mt-2">
+      <form method="post" enctype="multipart/form-data">
         {% csrf_token %}
-        <div class="col-12">
-          <label class="form-label">Brasão/Logo</label><br>
+        <div class="mb-3">
+          <strong>Brasão/Logo</strong><br>
           {% if cfg.logo %}<img src="{{ cfg.logo.url }}" alt="Logo" style="max-width:220px; margin:6px 0;">{% endif %}
           {{ form.logo }}
         </div>
-        <div class="col-12">
-          <label class="form-label">Apresentação</label>
-          {{ form.texto_apresentacao }}
-        </div>
-        <div class="col-12">
-          <label class="form-label">Metodologia</label>
-          {{ form.texto_metodologia }}
-        </div>
-        <div class="col-12">
-          <label class="form-label">Conclusão / Plano de Ação</label>
-          {{ form.texto_conclusao }}
-        </div>
-        <div class="col-12">
+        <hr>
+        <div class="mb-3"><strong>Apresentação</strong>{{ form.texto_apresentacao }}</div>
+        <div class="mb-3"><strong>Metodologia</strong>{{ form.texto_metodologia }}</div>
+        <div class="mb-3"><strong>Conclusão / Plano de Ação</strong>{{ form.texto_conclusao }}</div>
+        <div class="mb-3">
           {{ form.assinantes_lista.label_tag }} {{ form.assinantes_lista }}
-          <div class="form-text">{{ form.assinantes_lista.help_text }}</div>
+          <small class="text-muted d-block">{{ form.assinantes_lista.help_text }}</small>
         </div>
-        <hr class="my-2">
-        <div class="col-12 col-md-6">
-          <div class="form-check">
-            {{ form.incluir_mapa_nc }} <label class="form-check-label">Incluir Mapa de NC (resumo)</label>
-          </div>
-          <div class="form-check">
-            {{ form.incluir_sem_registro }} <label class="form-check-label">Incluir Bens Sem Registro (resumo)</label>
-          </div>
-          <div class="form-check">
-            {{ form.ocultar_contas_zeradas }} <label class="form-check-label">(aplica-se aos anexos detalhados)</label>
-          </div>
-        </div>
-        <div class="col-12 col-md-6">
-          <label class="form-label">Ordenar anexos</label>
-          {{ form.ordenar_anexos }}
-        </div>
-        <div class="col-12 d-flex justify-content-end gap-2">
+        <hr>
+        <div class="mb-2">{{ form.incluir_mapa_nc }} Incluir Mapa de NC (resumo)</div>
+        <div class="mb-2">{{ form.incluir_sem_registro }} Incluir Bens Sem Registro (resumo)</div>
+        <div class="mb-2">{{ form.ocultar_contas_zeradas }} (aplica-se aos anexos detalhados)</div>
+        <div class="mb-3">Ordenar anexos: {{ form.ordenar_anexos }}</div>
+        <div class="btns d-flex gap-2">
           <button class="btn btn-primary" type="submit">Salvar configurações</button>
-          <a class="btn btn-outline-secondary" href="#" onclick="window.print();return false;">Imprimir / Salvar PDF</a>
+          <a class="btn btn-outline-secondary" href="#" onclick="window.print();return false;">Imprimir / Salvar como PDF</a>
         </div>
       </form>
     </div>
-  </div>
+  </details>
   {% endif %}
 
-</div>
-
+</main>
 {% endblock %}

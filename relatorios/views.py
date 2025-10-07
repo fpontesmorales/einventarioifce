@@ -146,22 +146,16 @@ def _agrega_por_conta_base_bem(inv: Inventario):
 
         vb = vb_by_bem_id.get(bem.id)
         if vb:
-            entry['qtd_vist'] += 1
-            if is_encontrado(vb):
-                entry['qtd_ok'] += 1
-                entry['val_ok'] += v
-            elif is_divergente(vb):
+            if is_nao_encontrado(vb):
+                entry['qtd_nao'] += 1
+                entry['val_nao'] += v
+            elif getattr(vb, 'divergente', False):
                 entry['qtd_div'] += 1
                 entry['val_div'] += v
-            elif is_nao_encontrado(vb):
-                entry['qtd_nao'] += 1
-                entry['val_nao'] += v
             else:
-                entry['qtd_nao'] += 1
-                entry['val_nao'] += v
-        else:
-            entry['qtd_nao'] += 1
-            entry['val_nao'] += v
+                # encontrado (ou não-divergente)
+                entry['qtd_ok'] += 1
+                entry['val_ok'] += v
 
     linhas = []
     totais = {
@@ -473,11 +467,12 @@ def mapa_nao_conformidades(request: HttpRequest):
 # ETAPA B — Relatório Operacional (por Bloco/Sala) + ZIP de fotos
 # --------------------------------------------------------------------------------------
 
+
 def _coletar_operacional(inv: Inventario, bloco_f: str, sala_f: str, _apenas_pendencias_ignorado: bool):
     """
-    Retorna APENAS pendências vistoriadas (divergentes) + VistoriaExtra.
-    Agrupamento por BLOCO/SALA da VISTORIA quando houver observação de local,
-    caso contrário cai no SUAP. Fotos usam miniaturas cacheadas.
+    Apenas pendências vistoriadas (divergentes) + VistoriaExtra, agrupadas por
+    BLOCO/SALA da Vistoria quando houver.
+    O dataset agora é minimalista: tombamento, descrição (curta), diffs e (opcional) foto.
     """
     grupos, extras = [], []
 
@@ -491,19 +486,17 @@ def _coletar_operacional(inv: Inventario, bloco_f: str, sala_f: str, _apenas_pen
             vb = vb_by_bem_id.get(bem.id)
             if not vb:
                 continue  # não vistoriado -> fora
-            # não encontrados -> fora
             if is_nao_encontrado(vb):
-                continue
-            # só divergentes
+                continue  # não entra no operacional
             if not is_divergente(vb):
-                continue
+                continue  # só pendências
 
-            # Agrupamento: prioriza local da VISTORIA se houver observação
+            # Agrupamento: prioriza local da VISTORIA quando não confere
             if (getattr(vb, "sala_obs_nome", None) or getattr(vb, "sala_obs_bloco", None)) and (not getattr(vb, "confere_local", True)):
                 bloco = (getattr(vb, "sala_obs_bloco", None) or "—").strip()
                 sala = (getattr(vb, "sala_obs_nome", None) or "—").strip()
             else:
-                # fallback SUAP
+                from vistoria.models import split_sala_bloco
                 sala_txt = (getattr(bem, "sala", None) or "").strip()
                 sala_nome, bloco_nome = split_sala_bloco(sala_txt)
                 bloco = (bloco_nome or "—").strip()
@@ -514,26 +507,22 @@ def _coletar_operacional(inv: Inventario, bloco_f: str, sala_f: str, _apenas_pen
             if sala_f and sala_f.lower() not in sala.lower():
                 continue
 
+            # Diferenças principais (responsável SUAP agora é extraído de CARGA_ATUAL dentro do diff)
             diffs = diferencas_detalhadas(vb) or [{"campo": "divergência (não classificada)", "suap": "", "vistoria": ""}]
-            conta_raw = (getattr(bem, "conta_contabil", None) or "").strip()
-            cod = (conta_raw.split("-", 1)[0].strip() if conta_raw else "(sem conta)")
+
             tomb = (getattr(bem, "tombamento", None) or "").strip()
             desc_bem = (getattr(bem, "descricao", None) or "").strip()
-            resp_suap = (getattr(bem, "setor_responsavel", None) or "").strip()
 
-            # Miniatura
+            # Miniatura (se quiser manter foto num popover/link no futuro)
             foto_full_url, foto_thumb = None, None
             f = getattr(vb, "foto_marcadagua", None) or getattr(vb, "foto", None)
             if f:
                 foto_full_url = getattr(f, "url", None)
-                foto_thumb = thumbnail_url(f, size=(640, 640))  # <= rápido no dashboard
+                foto_thumb = thumbnail_url(f, size=(640, 640))
 
             grupo_map[(bloco, sala)].append({
-                "status": "Divergente",
                 "tombamento": tomb,
                 "descricao": desc_bem,
-                "conta": cod,
-                "responsavel": resp_suap,
                 "diffs": diffs,
                 "foto_url": foto_thumb or foto_full_url,
                 "foto_full_url": foto_full_url,
