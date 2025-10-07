@@ -9,6 +9,15 @@
   /* Cores impressas fielmente */
   * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 
+  /* Em tela: cabeçalho "grudado" na tabela longa */
+  .tbl-sticky thead th { position: sticky; top: 0; background: #f8f9fa; z-index: 2; }
+
+  /* Em tela: pequena zebragem para leitura */
+  .table-striped tbody tr:nth-of-type(odd) { background-color: #F7F8FA; }
+
+  /* Em tela: as imagens dos gráficos ficam ocultas (só aparecem no print) */
+  .chart-print-img { display: none; }
+
   /* Se houver cabeçalhos 'sticky', desligar no PDF para não cobrir linhas */
   @media print {
     .tbl-sticky thead th { position: static !important; top: auto !important; z-index: auto !important; }
@@ -17,6 +26,7 @@
     th, td { border-color: #9aa0a6 !important; background-clip: padding-box; }
     .table-light     { background-color: #EEF2F6 !important; }
     .table-secondary { background-color: #E9ECEF !important; }
+    .table-striped tbody tr:nth-of-type(odd) { background-color: #F2F4F7 !important; }
     .bg-ok  { background-color: #D8F3DC !important; }  /* verde claro */
     .bg-div { background-color: #FFF3CD !important; }  /* amarelo claro */
     .bg-nao { background-color: #FDE2E1 !important; }  /* vermelho claro */
@@ -25,11 +35,7 @@
     canvas { display: none !important; }
     .chart-print-img { display: block !important; max-width: 100%; height: auto; }
   }
-
-  /* Em tela: as imagens dos gráficos ficam ocultas (só aparecem no print) */
-  .chart-print-img { display: none; }
 </style>
-
 {% endblock %}
 
 {% block content %}
@@ -113,15 +119,14 @@
         <p>Sem dados para o inventário ativo.</p>
       {% endif %}
 
-      <!-- Aviso de amostragem baixa -->
+      <!-- Aviso de amostragem baixa (gráficos continuam aparecendo) -->
       {% if kpis and kpis.cobertura < 5 %}
         <div class="alert alert-info">
-          Cobertura preliminar (&lt; 5%). Gráficos sintéticos serão exibidos quando houver amostra suficiente.
+          Cobertura preliminar (&lt; 5%). Os gráficos abaixo são exibidos para facilitar o acompanhamento, mas podem mudar significativamente à medida que a vistoria avança.
         </div>
       {% endif %}
 
-      <!-- Gráficos (somente se cobertura >= 5%) -->
-      {% if kpis and kpis.cobertura >= 5 %}
+      <!-- Gráficos (sempre exibidos quando houver dados) -->
       <div class="charts-grid">
         <!-- Cobertura por conta -->
         <div class="chart-card">
@@ -189,13 +194,12 @@
           {% endif %}
         </div>
       </div>
-      {% endif %}
 
       <!-- Quadro por conta (tabela) -->
       <div class="mt-4">
         <h3>Quadro por Conta Contábil</h3>
         <div class="table-responsive">
-          <table class="table table-striped table-sm align-middle listing fullwidth">
+          <table class="table table-striped table-sm align-middle listing fullwidth tbl-sticky">
             <thead class="table-light">
               <tr>
                 <th>Conta</th>
@@ -252,6 +256,13 @@
             </tbody>
           </table>
         </div>
+        <p class="muted small mt-2">
+          <strong>Legendas:</strong>
+          <em>Encontrados</em> = vistoriados e <u>sem divergência real</u>;<br>
+          <em>Divergentes</em> = vistoriados com diferença SUAP × Vistoria (ex.: localização, série, etiqueta ausente);<br>
+          <em>Não-enc.</em> = marcados como não encontrados <u>ou</u> <em>não vistoriados</em> (regra de consolidação);<br>
+          <em>Cobertura</em> = vistoriados ÷ total SUAP; <em>Valor total</em> = OK + Não-enc. + Div.
+        </p>
       </div>
 
       <!-- Checklist (vistoriados) + Tops de não encontrados -->
