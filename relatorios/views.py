@@ -19,7 +19,7 @@ from .utils import (
     parse_conta_contabil, valor_bem,
     is_encontrado, is_nao_encontrado, is_divergente,
     coletar_divergencias, diferencas_detalhadas, export_csv,
-    thumbnail_url,
+    thumbnail_url, thumbnail_pair,
 )
 
 # Opcional (bens sem registro)
@@ -466,8 +466,8 @@ def relatorio_operacional(request: HttpRequest):
             try:
                 if foto.storage.exists(foto.name):
                     foto_url = foto.url
-                    thumb_url = thumbnail_url(foto, size=(320, 320), quality=58)
-                    print_url = thumbnail_url(foto, size=(640, 640), quality=60)
+                    thumb_url = thumbnail_url(foto, size=(200, 200), quality=40)
+                    print_url = thumbnail_url(foto, size=(200, 200), quality=40)
             except Exception:
                 foto_url = None
 
@@ -499,8 +499,8 @@ def relatorio_operacional(request: HttpRequest):
                 try:
                     if foto.storage.exists(foto.name):
                         foto_url = foto.url
-                        thumb_url = thumbnail_url(foto, size=(320, 320), quality=58)
-                        print_url = thumbnail_url(foto, size=(640, 640), quality=60)
+                        thumb_url = thumbnail_url(foto, size=(200, 200), quality=40)
+                        print_url = thumbnail_url(foto, size=(200, 200), quality=40)
                 except Exception:
                     foto_url = None
 
