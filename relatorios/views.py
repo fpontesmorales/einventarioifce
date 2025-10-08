@@ -417,6 +417,15 @@ def relatorio_final(request: HttpRequest):
 @staff_member_required
 def relatorio_operacional(request: HttpRequest):
     inv = _inventario_ativo()
+
+    # ✅ carrega a config para o cabeçalho (logo, textos etc.)
+    cfg = None
+    if inv and RelatorioConfig:
+        try:
+            cfg, _ = RelatorioConfig.objects.get_or_create(inventario=inv)
+        except Exception:
+            cfg = None
+
     show_images = True
     for key in ("fotos", "img", "images"):
         if key in request.GET:
@@ -426,28 +435,25 @@ def relatorio_operacional(request: HttpRequest):
     if not inv:
         return render(request, "relatorios/operacional.html", _admin_ctx(request, {
             "title": "Relatório Operacional",
-            "grupos": [], "extras": [], "andamento": {'totais': {}, 'blocos': []},
+            "cfg": cfg,                     # <-- passa cfg aqui também
+            "grupos": [], "extras": [],
+            "andamento": {'totais': {}, 'blocos': []},
             "show_images": show_images,
         }))
 
     andamento = _build_andamento(inv)
 
-    # Busca TODAS as vistorias do inventário e depois filtra no Python
     vb_qs = (
         VistoriaBem.objects.select_related("bem")
-        .filter(inventario=inv)
+        .filter(inventario=inv, divergente=True)
         .order_by("sala_obs_bloco", "sala_obs_nome", "bem__sala", "bem__tombamento")
     )
 
     grupos = []
     atual = None
     for vb in vb_qs:
-        # incluir quando for NAO ENCONTRADO ou houver divergência real (inclui etiqueta ausente)
-        if not (is_nao_encontrado(vb) or _has_real_divergencia(vb)):
-            continue
-
         bem = vb.bem
-        sala, bloco = _sala_bloco_para_relatorio(vb, bem)  # usa sala/bloco OBSERVADOS
+        sala, bloco = _sala_bloco_para_relatorio(vb, bem)
         if not atual or atual["bloco"] != bloco or atual["sala"] != sala:
             atual = {"bloco": bloco, "sala": sala, "itens": []}
             grupos.append(atual)
@@ -460,7 +466,6 @@ def relatorio_operacional(request: HttpRequest):
             try:
                 if foto.storage.exists(foto.name):
                     foto_url = foto.url
-                    # miniaturas mais enxutas
                     thumb_url = thumbnail_url(foto, size=(320, 320), quality=58)
                     print_url = thumbnail_url(foto, size=(640, 640), quality=60)
             except Exception:
@@ -514,6 +519,7 @@ def relatorio_operacional(request: HttpRequest):
 
     return render(request, "relatorios/operacional.html", _admin_ctx(request, {
         "title": "Relatório Operacional",
+        "cfg": cfg,                 # <-- e aqui no contexto final
         "grupos": grupos,
         "extras": extras,
         "andamento": andamento,

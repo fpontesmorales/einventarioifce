@@ -4,34 +4,22 @@
 {% block extrastyle %}
 {{ block.super }}
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css">
-<link rel="stylesheet" href="{% static 'relatorios/final.css' %}?v={{ total_row.qtd_total|default:0 }}">
 <style>
-  /* Cores impressas fielmente */
+  /* Cores impressas fiéis */
   * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 
-  /* Em tela: cabeçalho "grudado" na tabela longa */
+  /* Cabeçalho da tabela “grudado” em tela; desliga no print */
   .tbl-sticky thead th { position: sticky; top: 0; background: #f8f9fa; z-index: 2; }
 
-  /* Em tela: pequena zebragem para leitura */
-  .table-striped tbody tr:nth-of-type(odd) { background-color: #F7F8FA; }
-
-  /* Em tela: as imagens dos gráficos ficam ocultas (só aparecem no print) */
+  /* Imagens de gráficos só no print (se houver canvases na página) */
   .chart-print-img { display: none; }
 
-  /* Se houver cabeçalhos 'sticky', desligar no PDF para não cobrir linhas */
   @media print {
     .tbl-sticky thead th { position: static !important; top: auto !important; z-index: auto !important; }
     thead { display: table-header-group; }
     tfoot { display: table-footer-group; }
-    th, td { border-color: #9aa0a6 !important; background-clip: padding-box; }
-    .table-light     { background-color: #EEF2F6 !important; }
-    .table-secondary { background-color: #E9ECEF !important; }
-    .table-striped tbody tr:nth-of-type(odd) { background-color: #F2F4F7 !important; }
-    .bg-ok  { background-color: #D8F3DC !important; }  /* verde claro */
-    .bg-div { background-color: #FFF3CD !important; }  /* amarelo claro */
-    .bg-nao { background-color: #FDE2E1 !important; }  /* vermelho claro */
-
-    /* No PDF: esconder canvases e exibir as imagens geradas dos gráficos */
+    th, td { background-clip: padding-box; }
+    /* Esconder canvas e exibir snapshots */
     canvas { display: none !important; }
     .chart-print-img { display: block !important; max-width: 100%; height: auto; }
   }
@@ -39,7 +27,7 @@
 {% endblock %}
 
 {% block content %}
-<main class="container-fluid py-3 relatorios-main">
+<main class="container-fluid py-3">
 
   <!-- Cabeçalho institucional -->
   <section class="py-3 border-bottom mb-3">
@@ -64,8 +52,8 @@
 
   <!-- Apresentação -->
   {% if cfg and cfg.texto_apresentacao %}
-  <section class="section-card card">
-    <div class="card-header"><h2>Apresentação</h2></div>
+  <section class="card mb-3">
+    <div class="card-header"><h2 class="h5 mb-0">Apresentação</h2></div>
     <div class="card-body">
       <p style="white-space: pre-wrap;">{% render_vars cfg.texto_apresentacao %}</p>
     </div>
@@ -74,8 +62,8 @@
 
   <!-- Metodologia -->
   {% if cfg and cfg.texto_metodologia %}
-  <section class="section-card card">
-    <div class="card-header"><h2>Metodologia</h2></div>
+  <section class="card mb-3">
+    <div class="card-header"><h2 class="h5 mb-0">Metodologia</h2></div>
     <div class="card-body">
       <p style="white-space: pre-wrap;">{% render_vars cfg.texto_metodologia %}</p>
     </div>
@@ -83,123 +71,164 @@
   {% endif %}
 
   <!-- Resultados -->
-  <section class="section-card card">
-    <div class="card-header"><h2>Resultados</h2></div>
+  <section class="card">
+    <div class="card-header"><h2 class="h5 mb-0">Resultados</h2></div>
     <div class="card-body">
       {% include "relatorios/_andamento_cards.html" %}
-      <!-- KPIs principais -->
+
+      <!-- KPIs principais (somente Bootstrap) -->
       {% if kpis %}
-      <div class="kpi-grid mb-3">
-        <div class="kpi kpi-alert">
-          <div class="kpi-label">Não encontrados</div>
-          <div class="kpi-value">{{ kpis.nao_itens }} <span class="sub">({{ kpis.nao_valor|br_currency }})</span></div>
+      <div class="row row-cols-1 row-cols-sm-2 row-cols-lg-3 row-cols-xl-6 g-3 mb-3">
+        <div class="col">
+          <div class="card h-100 border-danger">
+            <div class="card-body">
+              <div class="text-muted small">Não encontrados</div>
+              <div class="fs-4 fw-semibold">
+                {{ kpis.nao_itens }}
+                <span class="small text-muted">({{ kpis.nao_valor|br_currency }})</span>
+              </div>
+            </div>
+          </div>
         </div>
-        <div class="kpi kpi-emph">
-          <div class="kpi-label">Cobertura</div>
-          <div class="kpi-value">{{ kpis.cobertura|br_percent }}</div>
+        <div class="col">
+          <div class="card h-100 border-primary">
+            <div class="card-body">
+              <div class="text-muted small">Cobertura</div>
+              <div class="fs-4 fw-semibold">{{ kpis.cobertura|br_percent }}</div>
+              <div class="progress mt-2" role="progressbar" aria-valuenow="{{ kpis.cobertura }}" aria-valuemin="0" aria-valuemax="100" style="height:.5rem;">
+                <div class="progress-bar" style="width: {{ kpis.cobertura }}%;"></div>
+              </div>
+            </div>
+          </div>
         </div>
-        <div class="kpi">
-          <div class="kpi-label">Vistoriados</div>
-          <div class="kpi-value">{{ kpis.vist_itens }}</div>
+        <div class="col">
+          <div class="card h-100">
+            <div class="card-body">
+              <div class="text-muted small">Vistoriados</div>
+              <div class="fs-4 fw-semibold">{{ kpis.vist_itens }}</div>
+            </div>
+          </div>
         </div>
-        <div class="kpi kpi-warn">
-          <div class="kpi-label">Divergentes</div>
-          <div class="kpi-value">{{ kpis.div_itens }} <span class="sub">({{ kpis.div_valor|br_currency }})</span></div>
+        <div class="col">
+          <div class="card h-100 border-warning">
+            <div class="card-body">
+              <div class="text-muted small">Divergentes</div>
+              <div class="fs-4 fw-semibold">
+                {{ kpis.div_itens }}
+                <span class="small text-muted">({{ kpis.div_valor|br_currency }})</span>
+              </div>
+            </div>
+          </div>
         </div>
-        <div class="kpi">
-          <div class="kpi-label">SUAP (itens)</div>
-          <div class="kpi-value">{{ kpis.suap_itens }}</div>
+        <div class="col">
+          <div class="card h-100">
+            <div class="card-body">
+              <div class="text-muted small">SUAP (itens)</div>
+              <div class="fs-4 fw-semibold">{{ kpis.suap_itens }}</div>
+            </div>
+          </div>
         </div>
-        <div class="kpi">
-          <div class="kpi-label">SUAP (R$)</div>
-          <div class="kpi-value">{{ kpis.suap_valor|br_currency }}</div>
+        <div class="col">
+          <div class="card h-100">
+            <div class="card-body">
+              <div class="text-muted small">SUAP (R$)</div>
+              <div class="fs-4 fw-semibold">{{ kpis.suap_valor|br_currency }}</div>
+            </div>
+          </div>
         </div>
       </div>
       {% else %}
         <p>Sem dados para o inventário ativo.</p>
       {% endif %}
 
-      <!-- Aviso de amostragem baixa (gráficos continuam aparecendo) -->
       {% if kpis and kpis.cobertura < 5 %}
         <div class="alert alert-info">
           Cobertura preliminar (&lt; 5%). Os gráficos abaixo são exibidos para facilitar o acompanhamento, mas podem mudar significativamente à medida que a vistoria avança.
         </div>
       {% endif %}
 
-      <!-- Gráficos (sempre exibidos quando houver dados) -->
-      <div class="charts-grid">
+      <!-- “Gráficos” com componentes Bootstrap -->
+      <div class="row g-3">
         <!-- Cobertura por conta -->
-        <div class="chart-card">
-          <h3>Cobertura por Conta (top 12)</h3>
-          {% if graficos.cobertura_por_conta %}
-            <div class="barlist">
-              {% for it in graficos.cobertura_por_conta %}
-                <div class="barrow">
-                  <span class="barlabel">{{ it.conta }}</span>
-                  <span class="barwrap">
-                    <span class="bar" style="width: {{ it.cobertura|floatformat:1 }}%;"></span>
-                    <span class="barpct">{{ it.cobertura|floatformat:1 }}%</span>
-                  </span>
-                </div>
-              {% endfor %}
-            </div>
-          {% else %}
-            <p class="muted">Sem contas para exibir.</p>
-          {% endif %}
-        </div>
-
-        <!-- Top 5 tipos -->
-        <div class="chart-card">
-          <h3>Top 5 tipos de divergência</h3>
-          {% if graficos.top_tipos and graficos.top_tipos.0.qtd %}
-            <div class="barlist">
-              {% for it in graficos.top_tipos %}
-                {% if it.rotulo and it.rotulo|lower != 'divergência (não classificada)' %}
-                  {% widthratio it.qtd graficos.top_tipos.0.qtd 100 as pct %}
-                  <div class="barrow">
-                    <span class="barlabel">{{ it.rotulo }}</span>
-                    <span class="barwrap">
-                      <span class="bar" style="width: {{ pct }}%;"></span>
-                      <span class="barpct">{{ it.qtd }}</span>
-                    </span>
+        <div class="col-md-6 col-lg-4">
+          <div class="card h-100">
+            <div class="card-header"><h3 class="h6 mb-0">Cobertura por Conta (top 12)</h3></div>
+            <div class="card-body">
+              {% if graficos.cobertura_por_conta %}
+                {% for it in graficos.cobertura_por_conta %}
+                  <div class="d-flex justify-content-between small">
+                    <span class="text-truncate">{{ it.conta }}</span>
+                    <span>{{ it.cobertura|floatformat:1 }}%</span>
                   </div>
-                {% endif %}
-              {% endfor %}
+                  <div class="progress mb-2" role="progressbar"
+                       aria-valuenow="{{ it.cobertura|floatformat:1 }}" aria-valuemin="0" aria-valuemax="100"
+                       style="height:.5rem;">
+                    <div class="progress-bar" style="width: {{ it.cobertura|floatformat:1 }}%;"></div>
+                  </div>
+                {% endfor %}
+              {% else %}
+                <p class="text-muted mb-0">Sem contas para exibir.</p>
+              {% endif %}
             </div>
-          {% else %}
-            <p class="muted">Sem divergências suficientes para exibir.</p>
-          {% endif %}
+          </div>
         </div>
 
-        <!-- Top 5 blocos -->
-        <div class="chart-card">
-          <h3>Top 5 blocos com pendências</h3>
-          {% if graficos.top_blocos and graficos.top_blocos.0.qtd %}
-            <div class="barlist">
-              {% for it in graficos.top_blocos %}
-                {% widthratio it.qtd graficos.top_blocos.0.qtd 100 as pctb %}
-                {% if it.bloco and it.bloco != '—' %}
-                <div class="barrow">
-                  <span class="barlabel">{{ it.bloco|default:"(sem identificação)" }}</span>
-                  <span class="barwrap">
-                    <span class="bar" style="width: {{ pctb }}%;"></span>
-                    <span class="barpct">{{ it.qtd }}</span>
-                  </span>
-                </div>
-                {% endif %}
-              {% endfor %}
+        <!-- Top 5 tipos de divergência -->
+        <div class="col-md-6 col-lg-4">
+          <div class="card h-100">
+            <div class="card-header"><h3 class="h6 mb-0">Top 5 tipos de divergência</h3></div>
+            <div class="card-body">
+              {% if graficos.top_tipos and graficos.top_tipos.0.qtd %}
+                {% for it in graficos.top_tipos %}
+                  {% if it.rotulo and it.rotulo|lower != 'divergência (não classificada)' %}
+                    {% widthratio it.qtd graficos.top_tipos.0.qtd 100 as pct %}
+                    <div class="d-flex justify-content-between small">
+                      <span class="text-truncate">{{ it.rotulo }}</span>
+                      <span>{{ it.qtd }}</span>
+                    </div>
+                    <div class="progress mb-2" role="progressbar" aria-valuenow="{{ pct }}" aria-valuemin="0" aria-valuemax="100" style="height:.5rem;">
+                      <div class="progress-bar" style="width: {{ pct }}%;"></div>
+                    </div>
+                  {% endif %}
+                {% endfor %}
+              {% else %}
+                <p class="text-muted mb-0">Sem divergências suficientes para exibir.</p>
+              {% endif %}
             </div>
-          {% else %}
-            <p class="muted">Sem pendências por bloco para exibir.</p>
-          {% endif %}
+          </div>
+        </div>
+
+        <!-- Top 5 blocos com pendências -->
+        <div class="col-md-12 col-lg-4">
+          <div class="card h-100">
+            <div class="card-header"><h3 class="h6 mb-0">Top 5 blocos com pendências</h3></div>
+            <div class="card-body">
+              {% if graficos.top_blocos and graficos.top_blocos.0.qtd %}
+                {% for it in graficos.top_blocos %}
+                  {% widthratio it.qtd graficos.top_blocos.0.qtd 100 as pctb %}
+                  {% if it.bloco and it.bloco != '—' %}
+                    <div class="d-flex justify-content-between small">
+                      <span class="text-truncate">{{ it.bloco|default:"(sem identificação)" }}</span>
+                      <span>{{ it.qtd }}</span>
+                    </div>
+                    <div class="progress mb-2" role="progressbar" aria-valuenow="{{ pctb }}" aria-valuemin="0" aria-valuemax="100" style="height:.5rem;">
+                      <div class="progress-bar" style="width: {{ pctb }}%;"></div>
+                    </div>
+                  {% endif %}
+                {% endfor %}
+              {% else %}
+                <p class="text-muted mb-0">Sem pendências por bloco para exibir.</p>
+              {% endif %}
+            </div>
+          </div>
         </div>
       </div>
 
       <!-- Quadro por conta (tabela) -->
       <div class="mt-4">
-        <h3>Quadro por Conta Contábil</h3>
+        <h3 class="h5">Quadro por Conta Contábil</h3>
         <div class="table-responsive">
-          <table class="table table-striped table-sm align-middle listing fullwidth tbl-sticky">
+          <table class="table table-striped table-sm align-middle w-100 tbl-sticky">
             <thead class="table-light">
               <tr>
                 <th>Conta</th>
@@ -220,7 +249,7 @@
               {% for l in linhas %}
                 {% widthratio l.qtd_nao l.qtd_total 100 as pct_nao %}
                 <tr>
-                  <td class="mono nowrap">{{ l.conta_codigo }}</td>
+                  <td class="font-monospace text-nowrap">{{ l.conta_codigo }}</td>
                   <td class="text-end">{{ l.qtd_total }}</td>
                   <td class="text-end">{{ l.qtd_vist }}</td>
                   <td class="text-end">{{ l.cobertura|br_percent }}</td>
@@ -256,11 +285,12 @@
             </tbody>
           </table>
         </div>
-        <p class="muted small mt-2">
+
+        <p class="text-muted small mt-2 mb-0">
           <strong>Legendas:</strong>
-          <em>Encontrados</em> = vistoriados e <u>sem divergência real</u>;<br>
-          <em>Divergentes</em> = vistoriados com diferença SUAP × Vistoria (ex.: localização, série, etiqueta ausente);<br>
-          <em>Não-enc.</em> = marcados como não encontrados <u>ou</u> <em>não vistoriados</em> (regra de consolidação);<br>
+          <em>Encontrados</em> = vistoriados e <u>sem divergência real</u>; 
+          <em>Divergentes</em> = vistoriados com diferença SUAP × Vistoria (ex.: localização, série, etiqueta ausente); 
+          <em>Não-enc.</em> = marcados como não encontrados <u>ou</u> <em>não vistoriados</em> (regra de consolidação); 
           <em>Cobertura</em> = vistoriados ÷ total SUAP; <em>Valor total</em> = OK + Não-enc. + Div.
         </p>
       </div>
@@ -270,9 +300,9 @@
       <div class="row g-3 mt-3">
         <div class="col-md-6">
           <div class="card h-100">
-            <div class="card-header"><h3>Checklist (somente vistoriados)</h3></div>
+            <div class="card-header"><h3 class="h6 mb-0">Checklist (somente vistoriados)</h3></div>
             <div class="card-body">
-              <p class="muted small">NI (não vistoriado) foi excluído desta tabela para evidenciar o comparativo Confere × Divergente.</p>
+              <p class="text-muted small">NI (não vistoriado) foi excluído desta tabela para evidenciar o comparativo Confere × Divergente.</p>
               <div class="table-responsive">
                 <table class="table table-sm align-middle">
                   <thead class="table-light">
@@ -302,52 +332,48 @@
                   </tbody>
                 </table>
               </div>
-              <p class="muted small mb-0">NI = não vistoriado (apresentado no KPI de cobertura).</p>
+              <p class="text-muted small mb-0">NI = não vistoriado (apresentado no KPI de cobertura).</p>
             </div>
           </div>
         </div>
 
         <div class="col-md-6">
           <div class="card h-100">
-            <div class="card-header"><h3>Não encontrados — Top 5</h3></div>
+            <div class="card-header"><h3 class="h6 mb-0">Não encontrados — Top 5</h3></div>
             <div class="card-body">
               <div class="row gy-2">
                 <div class="col-sm-6">
                   <h4 class="h6">por Conta</h4>
                   {% if sumarios.top_nao_contas %}
-                    <div class="barlist">
-                      {% for it in sumarios.top_nao_contas %}
-                        {% widthratio it.qtd sumarios.top_nao_contas.0.qtd 100 as pn %}
-                        <div class="barrow">
-                          <span class="barlabel">{{ it.conta }}</span>
-                          <span class="barwrap">
-                            <span class="bar" style="width: {{ pn }}%;"></span>
-                            <span class="barpct">{{ it.qtd }}</span>
-                          </span>
-                        </div>
-                      {% endfor %}
-                    </div>
+                    {% for it in sumarios.top_nao_contas %}
+                      {% widthratio it.qtd sumarios.top_nao_contas.0.qtd 100 as pn %}
+                      <div class="d-flex justify-content-between small">
+                        <span class="text-truncate">{{ it.conta }}</span>
+                        <span>{{ it.qtd }}</span>
+                      </div>
+                      <div class="progress mb-2" role="progressbar" aria-valuenow="{{ pn }}" aria-valuemin="0" aria-valuemax="100" style="height:.5rem;">
+                        <div class="progress-bar" style="width: {{ pn }}%;"></div>
+                      </div>
+                    {% endfor %}
                   {% else %}
-                    <p class="muted">Sem dados.</p>
+                    <p class="text-muted">Sem dados.</p>
                   {% endif %}
                 </div>
                 <div class="col-sm-6">
                   <h4 class="h6">por Bloco</h4>
                   {% if sumarios.top_nao_blocos %}
-                    <div class="barlist">
-                      {% for it in sumarios.top_nao_blocos %}
-                        {% widthratio it.qtd sumarios.top_nao_blocos.0.qtd 100 as pb %}
-                        <div class="barrow">
-                          <span class="barlabel">{{ it.bloco }}</span>
-                          <span class="barwrap">
-                            <span class="bar" style="width: {{ pb }}%;"></span>
-                            <span class="barpct">{{ it.qtd }}</span>
-                          </span>
-                        </div>
-                      {% endfor %}
-                    </div>
+                    {% for it in sumarios.top_nao_blocos %}
+                      {% widthratio it.qtd sumarios.top_nao_blocos.0.qtd 100 as pb %}
+                      <div class="d-flex justify-content-between small">
+                        <span class="text-truncate">{{ it.bloco }}</span>
+                        <span>{{ it.qtd }}</span>
+                      </div>
+                      <div class="progress mb-2" role="progressbar" aria-valuenow="{{ pb }}" aria-valuemin="0" aria-valuemax="100" style="height:.5rem;">
+                        <div class="progress-bar" style="width: {{ pb }}%;"></div>
+                      </div>
+                    {% endfor %}
                   {% else %}
-                    <p class="muted">Sem dados.</p>
+                    <p class="text-muted">Sem dados.</p>
                   {% endif %}
                 </div>
               </div>
@@ -362,8 +388,8 @@
 
   <!-- Encaminhamentos e Plano de Ação -->
   {% if cfg and cfg.texto_conclusao %}
-  <section class="section-card card">
-    <div class="card-header"><h2>Encaminhamentos e Plano de Ação</h2></div>
+  <section class="card mt-3">
+    <div class="card-header"><h2 class="h5 mb-0">Encaminhamentos e Plano de Ação</h2></div>
     <div class="card-body">
       <p style="white-space: pre-wrap;">{% render_vars cfg.texto_conclusao %}</p>
     </div>
@@ -372,8 +398,8 @@
 
   <!-- Assinaturas -->
   {% if cfg and cfg.assinantes %}
-  <section class="section-card card">
-    <div class="card-header"><h2>Assinaturas</h2></div>
+  <section class="card mt-3">
+    <div class="card-header"><h2 class="h5 mb-0">Assinaturas</h2></div>
     <div class="card-body">
       <div class="row row-cols-1 row-cols-md-2 g-4">
         {% for a in cfg.assinantes %}
@@ -381,7 +407,7 @@
           <div class="p-3 border rounded text-center" style="min-height:120px;">
             <div style="margin-top:40px;">______________________________________________</div>
             <div><strong>{{ a.nome }}</strong></div>
-            <div class="muted">{{ a.cargo }}</div>
+            <div class="text-muted">{{ a.cargo }}</div>
           </div>
         </div>
         {% endfor %}
@@ -392,9 +418,9 @@
 
   <!-- Configurações (recolhidas; somem na impressão) -->
   {% if form %}
-  <details class="config no-print mt-3">
+  <details class="mt-3">
     <summary>Editar configurações do relatório</summary>
-    <div class="relatorios-sidebar mt-2">
+    <div class="mt-2">
       <form method="post" enctype="multipart/form-data">
         {% csrf_token %}
         <div class="mb-3">
@@ -415,7 +441,7 @@
         <div class="mb-2">{{ form.incluir_sem_registro }} Incluir Bens Sem Registro (resumo)</div>
         <div class="mb-2">{{ form.ocultar_contas_zeradas }} (aplica-se aos anexos detalhados)</div>
         <div class="mb-3">Ordenar anexos: {{ form.ordenar_anexos }}</div>
-        <div class="btns d-flex gap-2">
+        <div class="d-flex gap-2">
           <button class="btn btn-primary" type="submit">Salvar configurações</button>
           <a class="btn btn-outline-secondary" href="#" onclick="window.print();return false;">Imprimir / Salvar como PDF</a>
         </div>
@@ -428,34 +454,29 @@
 {% endblock %}
 
 <script>
-  // Gera um <img> (PNG) para cada <canvas> visível, para que gráficos apareçam no PDF
+  // Snapshot <canvas> -> <img> para gráficos aparecerem no PDF (se existirem canvases)
   function __preparePrintWithCharts() {
-    if (window.__chartsPreparedForPrint) return; // evita duplicar
+    if (window.__chartsPreparedForPrint) return;
     window.__chartsPreparedForPrint = true;
 
     const canvases = document.querySelectorAll('canvas');
     const backups = [];
     canvases.forEach(cv => {
       try {
-        // Garante dimensões para snapshot consistente
         const w = cv.clientWidth || cv.width || 600;
         const h = cv.clientHeight || cv.height || 300;
         cv.setAttribute('width', w);
         cv.setAttribute('height', h);
 
-        // Cria a imagem logo após o canvas
         const img = new Image();
         img.className = 'chart-print-img';
         img.alt = 'Gráfico';
-        img.src = cv.toDataURL('image/png'); // snapshot do Chart.js
+        img.src = cv.toDataURL('image/png');
         cv.insertAdjacentElement('afterend', img);
         backups.push({ img });
-      } catch (e) {
-        // Se algo falhar (raro), mantemos o canvas; alguns navegadores ainda imprimem o canvas.
-      }
+      } catch (e) {}
     });
 
-    // Limpa imagens auxiliares depois de imprimir
     const cleanup = () => {
       backups.forEach(({ img }) => { if (img && img.parentNode) img.remove(); });
       window.__chartsPreparedForPrint = false;
@@ -464,12 +485,10 @@
     window.addEventListener('afterprint', cleanup);
   }
 
-  // Dispara automaticamente ao abrir o diálogo de impressão
   if (window.matchMedia && window.matchMedia('print').addEventListener) {
     const mql = window.matchMedia('print');
     mql.addEventListener('change', e => { if (e.matches) __preparePrintWithCharts(); });
   } else {
-    // Fallback amplo
     window.onbeforeprint = __preparePrintWithCharts;
   }
 </script>
