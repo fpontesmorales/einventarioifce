@@ -11,6 +11,8 @@ from django.contrib.admin.sites import site as admin_site
 from django.contrib.admin.views.decorators import staff_member_required
 from django.shortcuts import render, redirect
 from django.http import HttpRequest, StreamingHttpResponse, HttpResponse
+from django.db.models import Q
+
 
 from patrimonio.models import Bem
 from vistoria.models import Inventario, VistoriaBem
@@ -445,7 +447,12 @@ def relatorio_operacional(request: HttpRequest):
 
     vb_qs = (
         VistoriaBem.objects.select_related("bem")
-        .filter(inventario=inv, divergente=True)
+        .filter(inventario=inv)
+        .filter(
+            Q(divergente=True) |
+            Q(status=VistoriaBem.Status.NAO_ENCONTRADO) |
+            Q(etiqueta_possui=False)
+        )
         .order_by("sala_obs_bloco", "sala_obs_nome", "bem__sala", "bem__tombamento")
     )
 
