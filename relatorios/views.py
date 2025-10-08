@@ -432,17 +432,22 @@ def relatorio_operacional(request: HttpRequest):
 
     andamento = _build_andamento(inv)
 
+    # Busca TODAS as vistorias do inventário e depois filtra no Python
     vb_qs = (
         VistoriaBem.objects.select_related("bem")
-        .filter(inventario=inv, divergente=True)
+        .filter(inventario=inv)
         .order_by("sala_obs_bloco", "sala_obs_nome", "bem__sala", "bem__tombamento")
     )
 
     grupos = []
     atual = None
     for vb in vb_qs:
+        # incluir quando for NAO ENCONTRADO ou houver divergência real (inclui etiqueta ausente)
+        if not (is_nao_encontrado(vb) or _has_real_divergencia(vb)):
+            continue
+
         bem = vb.bem
-        sala, bloco = _sala_bloco_para_relatorio(vb, bem)  # << usa sala/bloco OBSERVADOS
+        sala, bloco = _sala_bloco_para_relatorio(vb, bem)  # usa sala/bloco OBSERVADOS
         if not atual or atual["bloco"] != bloco or atual["sala"] != sala:
             atual = {"bloco": bloco, "sala": sala, "itens": []}
             grupos.append(atual)

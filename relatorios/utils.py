@@ -257,11 +257,13 @@ def coletar_divergencias(vb) -> List[str]:
     if vist_tombo and suap_tombo and vist_tombo != suap_tombo:
         out.append("tombamento divergente")
 
-    # 8) Observações livres
+    # 8) Observações livres (ignora placeholders do tipo "None", "N/A", "-")
     extra = _get(vb, "divergencias_texto", "divergencia_texto", "observacao_divergencia", "observacoes", "observacao", default=None)
     if extra:
-        parts = [p.strip() for p in str(extra).replace("/", ";").replace(",", ";").split(";") if p.strip()]
-        out.extend(parts)
+        s = _to_str(extra)
+        norm = s.strip().lower()
+        if norm not in {"", "none", "null", "nenhum", "n/a", "na", "-", "—"}:
+            out.append(s)
 
     # Dedup mantendo ordem
     seen, limp = set(), []
@@ -348,10 +350,13 @@ def diferencas_detalhadas(vb) -> List[Dict[str, str]]:
         base = suap_tombo or suap_desc or suap_loc
         out.append({"campo": "não encontrado", "suap": base or "—", "vistoria": "—"})
 
-    # Observações
+    # Observações (ignora placeholders)
     extra = _get(vb, "divergencias_texto", "divergencia_texto", "observacao_divergencia", "observacoes", "observacao", default=None)
     if extra:
-        out.append({"campo": "observação", "suap": "", "vistoria": _to_str(extra)})
+        s = _to_str(extra)
+        norm = s.strip().lower()
+        if norm not in {"", "none", "null", "nenhum", "n/a", "na", "-", "—"}:
+            out.append({"campo": "observação", "suap": "", "vistoria": s})
 
     # Dedup
     seen, result = set(), []
@@ -384,9 +389,8 @@ def _thumb_url(rel_dir: str, base: str, size: Tuple[int, int], ext: str) -> str:
 
 def _save_thumb(im: "Image.Image", dst_path: str, fmt: str, quality: int) -> None:
     if fmt.upper() == "WEBP":
-        im.save(dst_path, "WEBP", quality=quality, method=4)  # method 0..6 (melhor compressão = 6; 4 é bom/custo baixo)
+        im.save(dst_path, "WEBP", quality=quality, method=4)
     else:
-        # JPEG progressivo e otmizado
         im.save(dst_path, "JPEG", quality=quality, optimize=True, progressive=True, subsampling=2)
 
 def thumbnail_pair(filefield, small=(320, 320), medium=(640, 640), q_small=58, q_medium=60) -> Tuple[Optional[str], Optional[str]]:
@@ -397,7 +401,6 @@ def thumbnail_pair(filefield, small=(320, 320), medium=(640, 640), q_small=58, q
     if not filefield:
         return None, None
     if Image is None:
-        # fallback: sem Pillow -> use a URL original
         try:
             u = filefield.url
             return u, u
@@ -421,7 +424,6 @@ def thumbnail_pair(filefield, small=(320, 320), medium=(640, 640), q_small=58, q
 
         if needs_small or needs_medium:
             with Image.open(src_path) as im:
-                # remove metadata + normaliza cores
                 im = im.convert("RGB")
 
                 if needs_small:
@@ -437,7 +439,6 @@ def thumbnail_pair(filefield, small=(320, 320), medium=(640, 640), q_small=58, q
         return _thumb_url(rel_dir, base, small, ext_small), _thumb_url(rel_dir, base, medium, ext_medium)
 
     except Exception:
-        # Fallback: retorna a URL original
         try:
             u = filefield.url
             return u, u
