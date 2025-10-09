@@ -11,8 +11,7 @@ from django.contrib.admin.sites import site as admin_site
 from django.contrib.admin.views.decorators import staff_member_required
 from django.shortcuts import render, redirect
 from django.http import HttpRequest, StreamingHttpResponse, HttpResponse
-from django.db.models import Q
-
+from django.db.models import Q  # <-- para ampliar o filtro do operacional
 
 from patrimonio.models import Bem
 from vistoria.models import Inventario, VistoriaBem
@@ -420,7 +419,7 @@ def relatorio_final(request: HttpRequest):
 def relatorio_operacional(request: HttpRequest):
     inv = _inventario_ativo()
 
-    # ✅ carrega a config para o cabeçalho (logo, textos etc.)
+    # carrega a config para o cabeçalho (logo, textos etc.)
     cfg = None
     if inv and RelatorioConfig:
         try:
@@ -437,7 +436,7 @@ def relatorio_operacional(request: HttpRequest):
     if not inv:
         return render(request, "relatorios/operacional.html", _admin_ctx(request, {
             "title": "Relatório Operacional",
-            "cfg": cfg,                     # <-- passa cfg aqui também
+            "cfg": cfg,
             "grupos": [], "extras": [],
             "andamento": {'totais': {}, 'blocos': []},
             "show_images": show_images,
@@ -445,9 +444,13 @@ def relatorio_operacional(request: HttpRequest):
 
     andamento = _build_andamento(inv)
 
+    # ✅ Inclui etiqueta ausente e "não encontrado" além do flag 'divergente'
     vb_qs = (
-        VistoriaBem.objects.select_related("bem")
-        .filter(inventario=inv)
+        VistoriaBem.objects
+        .select_related("bem")
+        .filter(
+            inventario=inv
+        )
         .filter(
             Q(divergente=True) |
             Q(status=VistoriaBem.Status.NAO_ENCONTRADO) |
@@ -472,9 +475,15 @@ def relatorio_operacional(request: HttpRequest):
         if foto and getattr(foto, "name", ""):
             try:
                 if foto.storage.exists(foto.name):
+                    # Thumbs 4:3, leves e nítidas
+                    thumb_url, print_url = thumbnail_pair(
+                        foto,
+                        small=(240, 180),   # ~120x90 @2x
+                        medium=(240, 180),  # para impressão
+                        q_small=35,
+                        q_medium=35,
+                    )
                     foto_url = foto.url
-                    thumb_url = thumbnail_url(foto, size=(200, 200), quality=40)
-                    print_url = thumbnail_url(foto, size=(200, 200), quality=40)
             except Exception:
                 foto_url = None
 
@@ -505,9 +514,14 @@ def relatorio_operacional(request: HttpRequest):
             if foto and getattr(foto, "name", ""):
                 try:
                     if foto.storage.exists(foto.name):
+                        thumb_url, print_url = thumbnail_pair(
+                            foto,
+                            small=(240, 180),
+                            medium=(240, 180),
+                            q_small=30,
+                            q_medium=30,
+                        )
                         foto_url = foto.url
-                        thumb_url = thumbnail_url(foto, size=(200, 200), quality=40)
-                        print_url = thumbnail_url(foto, size=(200, 200), quality=40)
                 except Exception:
                     foto_url = None
 
@@ -526,7 +540,7 @@ def relatorio_operacional(request: HttpRequest):
 
     return render(request, "relatorios/operacional.html", _admin_ctx(request, {
         "title": "Relatório Operacional",
-        "cfg": cfg,                 # <-- e aqui no contexto final
+        "cfg": cfg,
         "grupos": grupos,
         "extras": extras,
         "andamento": andamento,

@@ -88,7 +88,7 @@
                     <!-- Quadro comparativo -->
                     <td class="border-start border-warning border-3 ps-2">
                       {% if it.diffs %}
-                        <!-- Badges para marcadores especiais -->
+                        <!-- Badge de não encontrado -->
                         {% for d in it.diffs %}
                           {% if d.campo|lower == 'não encontrado' %}
                             <div class="mb-2">
@@ -109,7 +109,6 @@
                             <tbody>
                               {% for d in it.diffs %}
                                 {% if d.campo|lower != 'não encontrado' %}
-                                  {# ignora observação vazia (já filtrada no utils) #}
                                   <tr>
                                     <td class="fw-semibold">{{ d.campo|capfirst }}</td>
                                     <td class="text-muted">{{ d.suap|default:"—" }}</td>
@@ -125,22 +124,25 @@
                       {% endif %}
                     </td>
 
+                    <!-- Foto com tamanho visual uniforme -->
                     <td class="text-center">
                       {% if it.foto_url %}
                         {% if show_images %}
                           <a href="{{ it.foto_full_url|default:it.foto_url }}" target="_blank" rel="noopener" class="d-inline-block">
-                            <picture>
-                              {% if it.print_url %}
-                                <source media="print" srcset="{{ it.print_url }}">
-                              {% endif %}
-                              <img
-                                src="{{ it.thumb_url|default:it.foto_url }}"
-                                alt="Foto"
-                                loading="lazy" decoding="async"
-                                style="max-height: 90px; width: auto;"
-                                class="img-thumbnail"
-                              >
-                            </picture>
+                            <div class="ratio ratio-4x3" style="width:120px;">
+                              <picture>
+                                {% if it.print_url %}
+                                  <source media="print" srcset="{{ it.print_url }}">
+                                {% endif %}
+                                <img
+                                  src="{{ it.thumb_url|default:it.foto_url }}"
+                                  alt="Foto"
+                                  class="w-100 h-100 rounded border"
+                                  style="object-fit: cover;"
+                                  loading="lazy" decoding="async"
+                                >
+                              </picture>
+                            </div>
                           </a>
                         {% else %}
                           <span class="text-muted">—</span>
@@ -211,18 +213,20 @@
                       {% if it.foto_url %}
                         {% if show_images %}
                           <a href="{{ it.foto_full_url|default:it.foto_url }}" target="_blank" rel="noopener" class="d-inline-block">
-                            <picture>
-                              {% if it.print_url %}
-                                <source media="print" srcset="{{ it.print_url }}">
-                              {% endif %}
-                              <img
-                                src="{{ it.thumb_url|default:it.foto_url }}"
-                                alt="Foto"
-                                loading="lazy" decoding="async"
-                                style="max-height: 90px; width: auto;"
-                                class="img-thumbnail"
-                              >
-                            </picture>
+                            <div class="ratio ratio-4x3" style="width:120px;">
+                              <picture>
+                                {% if it.print_url %}
+                                  <source media="print" srcset="{{ it.print_url }}">
+                                {% endif %}
+                                <img
+                                  src="{{ it.thumb_url|default:it.foto_url }}"
+                                  alt="Foto"
+                                  class="w-100 h-100 rounded border"
+                                  style="object-fit: cover;"
+                                  loading="lazy" decoding="async"
+                                >
+                              </picture>
+                            </div>
                           </a>
                         {% else %}
                           <span class="text-muted">—</span>
