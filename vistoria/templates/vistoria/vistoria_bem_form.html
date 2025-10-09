@@ -1,182 +1,203 @@
 {% extends "vistoria/base_vistoria.html" %}
 {% block title %}Vistoria — {{ bem.tombamento }}{% endblock %}
 
-{% block content %}
-  <div class="card">
-    <div class="row" style="justify-content:space-between;">
-      <div><strong>{{ bem.tombamento }}</strong></div>
-      <a class="btn" href="{% url 'vistoria_public:sala_workspace' sala_id=sala.id %}">← Voltar</a>
-    </div>
-  </div>
+{% block page_prefix %}<i class="bi bi-box-seam"></i> Bem{% endblock %}
+{% block page_title %}{{ bem.tombamento }}{% endblock %}
+{% block page_subtitle %}{{ sala.nome }}{% if sala.bloco %} — {{ sala.bloco }}{% endif %}{% endblock %}
+{% block page_actions %}
+  <a class="btn btn-outline-secondary" href="{% url 'vistoria_public:sala_workspace' sala_id=sala.id %}">
+    <i class="bi bi-arrow-left"></i> Voltar
+  </a>
+{% endblock %}
 
-  <div class="card">
-    <div class="group-title">Dados do SUAP</div>
-    <div class="grid" style="gap:6px;">
-      <div><strong>Descrição:</strong> {{ bem.descricao|default:"—" }}</div>
-      <div><strong>Nº de série:</strong> {{ suap_serie|default:"—" }}</div>
-      <div><strong>Local:</strong> {{ suap_nome|default:"—" }}{% if suap_bloco %} — {{ suap_bloco }}{% endif %}</div>
-      <div><strong>Estado de conservação:</strong> {{ suap_estado|default:"—" }}</div>
-      <div><strong>Responsável/carga:</strong> {{ suap_resp|default:"—" }}</div>
+{% block content %}
+  <div class="card shadow-sm mb-3">
+    <div class="card-body">
+      <div class="fw-semibold mb-2"><i class="bi bi-info-circle"></i> Dados do SUAP</div>
+      <div class="list-group list-group-flush">
+        <div class="list-group-item"><span class="text-muted">Descrição:</span> {{ bem.descricao|default:"—" }}</div>
+        <div class="list-group-item"><span class="text-muted">Nº de série:</span> {{ suap_serie|default:"—" }}</div>
+        <div class="list-group-item"><span class="text-muted">Local:</span> {{ suap_nome|default:"—" }}{% if suap_bloco %} — {{ suap_bloco }}{% endif %}</div>
+        <div class="list-group-item"><span class="text-muted">Estado de conservação:</span> {{ suap_estado|default:"—" }}</div>
+        <div class="list-group-item"><span class="text-muted">Responsável/carga:</span> {{ suap_resp|default:"—" }}</div>
+      </div>
     </div>
   </div>
 
   {% if vistoria and vistoria.foto_marcadagua %}
-    <div class="card">
-      <div class="group-title">Foto atual</div>
-      <img src="{{ vistoria.foto_marcadagua.url }}" alt="Foto do bem" style="width:100%; height:auto; border-radius:10px; border:1px solid #e5e7eb;" />
-      <div class="muted" style="margin-top:6px;">Você pode substituir enviando outra foto abaixo.</div>
+    <div class="card shadow-sm mb-3">
+      <div class="card-body">
+        <div class="fw-semibold mb-2"><i class="bi bi-image"></i> Foto atual</div>
+        <img src="{{ vistoria.foto_marcadagua.url }}" alt="Foto do bem" class="img-fluid rounded border" />
+        <div class="text-muted small mt-2">Você pode substituir enviando outra foto abaixo.</div>
+      </div>
     </div>
   {% endif %}
 
-  <!-- FORM PRINCIPAL: SALVAR (ENCONTRADO) -->
-  <form id="form-vistoria" method="post" enctype="multipart/form-data" class="grid">
+  <form id="form-vistoria" method="post" enctype="multipart/form-data" class="mb-3">
     {% csrf_token %}
     <input type="hidden" name="acao" value="salvar_encontrado" />
     <input type="hidden" id="sala-default-id" value="{{ sala_default_id }}"/>
 
-    <div class="card">
-      <div class="group-title">Foto do bem</div>
-      <!-- Força câmera no mobile (quando suportado) -->
-      <input type="file" name="foto" accept="image/*" capture="environment" {% if not vistoria or not vistoria.foto_marcadagua %}required{% endif %} />
-      <div class="muted" style="margin-top:6px;">Dica: vire o celular para horizontal para uma foto mais ampla.</div>
-    </div>
-
-    <div class="card">
-      <div class="group-title">Conferências</div>
-
-      <label class="row" style="gap:8px;">
-        <input type="checkbox" name="confere_descricao" {% if not vistoria or vistoria.confere_descricao %}checked{% endif %}/> Descrição confere?
-      </label>
-      <div id="grp-descricao" style="display:none; margin-top:6px;">
-        <textarea name="descricao_obs" placeholder="Descrição observada (se divergente)">{% if vistoria and not vistoria.confere_descricao %}{{ vistoria.descricao_obs }}{% endif %}</textarea>
-      </div>
-
-      <label class="row" style="gap:8px; margin-top:10px;">
-        <input type="checkbox" name="confere_numero_serie" {% if not vistoria or vistoria.confere_numero_serie %}checked{% endif %}/> Número de série confere?
-      </label>
-      <div id="grp-serie" style="display:none; margin-top:6px;">
-        <input type="text" name="numero_serie_obs" value="{% if vistoria and not vistoria.confere_numero_serie %}{{ vistoria.numero_serie_obs }}{% endif %}" placeholder="Série observada (se divergente)" />
-      </div>
-
-      <label class="row" style="gap:8px; margin-top:10px%;">
-        <input id="cb-local" type="checkbox" name="confere_local" {% if not vistoria or vistoria.confere_local %}checked{% endif %}/> Local (sala/bloco) confere?
-      </label>
-      <div id="grp-local" style="display:none; margin-top:6px;">
-        <select name="sala_obs_id" id="sel-sala-obs">
-          <option value="">— Selecione a sala observada —</option>
-          {% for s in salas %}
-            {% if vistoria and not vistoria.confere_local and vistoria.sala_obs_nome == s.nome and vistoria.sala_obs_bloco == s.bloco %}
-              <option value="{{ s.id }}" selected>{{ s.nome }}{% if s.bloco %} — {{ s.bloco }}{% endif %}</option>
-            {% else %}
-              <option value="{{ s.id }}">{{ s.nome }}{% if s.bloco %} — {{ s.bloco }}{% endif %}</option>
-            {% endif %}
-          {% endfor %}
-        </select>
-      </div>
-
-      <label class="row" style="gap:8px; margin-top:10px;">
-        <input type="checkbox" name="confere_estado" {% if not vistoria or vistoria.confere_estado %}checked{% endif %}/> Estado de conservação confere?
-      </label>
-      <div id="grp-estado" style="display:none; margin-top:6px;">
-        <input type="text" name="estado_obs" value="{% if vistoria and not vistoria.confere_estado %}{{ vistoria.estado_obs }}{% endif %}" placeholder="Estado observado (se divergente)" />
-      </div>
-
-      <label class="row" style="gap:8px; margin-top:10px;">
-        <input type="checkbox" name="confere_responsavel" {% if not vistoria or vistoria.confere_responsavel %}checked{% endif %}/> Responsável/carga confere?
-      </label>
-      <div id="grp-resp" style="display:none; margin-top:6px;">
-        <input type="text" name="responsavel_obs" value="{% if vistoria and not vistoria.confere_responsavel %}{{ vistoria.responsavel_obs }}{% endif %}" placeholder="Responsável/usuário observado (se divergente)" />
+    <div class="card shadow-sm mb-3">
+      <div class="card-body">
+        <div class="fw-semibold mb-2"><i class="bi bi-camera"></i> Foto do bem</div>
+        <input class="form-control" type="file" name="foto" accept="image/*" capture="environment"
+               {% if not vistoria or not vistoria.foto_marcadagua %}required{% endif %} />
+        <div class="form-text">Dica: gire o celular para horizontal para uma foto mais ampla.</div>
       </div>
     </div>
 
-    <div class="card">
-      <div class="group-title">Etiqueta e observações</div>
-      <label class="row" style="gap:8px;">
-        <input type="checkbox" name="etiqueta_possui" {% if not vistoria or vistoria.etiqueta_possui %}checked{% endif %}/> Possui etiqueta?
-      </label>
-      <div style="margin-top:6px;">
-        <select name="etiqueta_condicao" id="sel-etiqueta-cond">
-          <option value="">— Condição —</option>
-          {% for key,val in etiqueta_choices %}
-            <option value="{{ key }}" {% if vistoria and vistoria.etiqueta_condicao == key %}selected{% endif %}>{{ val }}</option>
-          {% endfor %}
-        </select>
+    <div class="card shadow-sm mb-3">
+      <div class="card-body">
+        <div class="fw-semibold mb-2"><i class="bi bi-check2-square"></i> Conferências</div>
+
+        <div class="form-check mb-2">
+          <input class="form-check-input" type="checkbox" id="cb-desc" name="confere_descricao"
+                 {% if not vistoria or vistoria.confere_descricao %}checked{% endif %}>
+          <label class="form-check-label" for="cb-desc">Descrição confere?</label>
+        </div>
+        <div id="grp-descricao" class="mb-3" style="display:none;">
+          <label class="form-label">Descrição observada (se divergente)</label>
+          <textarea class="form-control" name="descricao_obs">{% if vistoria and not vistoria.confere_descricao %}{{ vistoria.descricao_obs }}{% endif %}</textarea>
+        </div>
+
+        <div class="form-check mb-2">
+          <input class="form-check-input" type="checkbox" id="cb-serie" name="confere_numero_serie"
+                 {% if not vistoria or vistoria.confere_numero_serie %}checked{% endif %}>
+          <label class="form-check-label" for="cb-serie">Número de série confere?</label>
+        </div>
+        <div id="grp-serie" class="mb-3" style="display:none;">
+          <label class="form-label">Série observada (se divergente)</label>
+          <input class="form-control" type="text" name="numero_serie_obs"
+                 value="{% if vistoria and not vistoria.confere_numero_serie %}{{ vistoria.numero_serie_obs }}{% endif %}">
+        </div>
+
+        <div class="form-check mb-2">
+          <input class="form-check-input" type="checkbox" id="cb-local" name="confere_local"
+                 {% if not vistoria or vistoria.confere_local %}checked{% endif %}>
+          <label class="form-check-label" for="cb-local">Local (sala/bloco) confere?</label>
+        </div>
+        <div id="grp-local" class="mb-3" style="display:none;">
+          <label class="form-label">Sala observada (se diferente)</label>
+          <select class="form-select" name="sala_obs_id" id="sel-sala-obs">
+            <option value="">— Selecione a sala observada —</option>
+            {% for s in salas %}
+              {% if vistoria and not vistoria.confere_local and vistoria.sala_obs_nome == s.nome and vistoria.sala_obs_bloco == s.bloco %}
+                <option value="{{ s.id }}" selected>{{ s.nome }}{% if s.bloco %} — {{ s.bloco }}{% endif %}</option>
+              {% else %}
+                <option value="{{ s.id }}">{{ s.nome }}{% if s.bloco %} — {{ s.bloco }}{% endif %}</option>
+              {% endif %}
+            {% endfor %}
+          </select>
+        </div>
+
+        <div class="form-check mb-2">
+          <input class="form-check-input" type="checkbox" id="cb-estado" name="confere_estado"
+                 {% if not vistoria or vistoria.confere_estado %}checked{% endif %}>
+          <label class="form-check-label" for="cb-estado">Estado de conservação confere?</label>
+        </div>
+        <div id="grp-estado" class="mb-3" style="display:none;">
+          <label class="form-label">Estado observado (se divergente)</label>
+          <input class="form-control" type="text" name="estado_obs"
+                 value="{% if vistoria and not vistoria.confere_estado %}{{ vistoria.estado_obs }}{% endif %}">
+        </div>
+
+        <div class="form-check mb-2">
+          <input class="form-check-input" type="checkbox" id="cb-resp" name="confere_responsavel"
+                 {% if not vistoria or vistoria.confere_responsavel %}checked{% endif %}>
+          <label class="form-check-label" for="cb-resp">Responsável/carga confere?</label>
+        </div>
+        <div id="grp-resp" class="mb-3" style="display:none;">
+          <label class="form-label">Responsável/usuário observado (se divergente)</label>
+          <input class="form-control" type="text" name="responsavel_obs"
+                 value="{% if vistoria and not vistoria.confere_responsavel %}{{ vistoria.responsavel_obs }}{% endif %}">
+        </div>
       </div>
-      <textarea name="avaria_texto" placeholder="Avaria (se houver)">{% if vistoria %}{{ vistoria.avaria_texto }}{% endif %}</textarea>
-      <textarea name="observacoes" placeholder="Observações">{% if vistoria %}{{ vistoria.observacoes }}{% endif %}</textarea>
     </div>
 
-    <div class="row" style="gap:8px;">
-      <button class="btn primary" type="submit">Salvar (Encontrado)</button>
+    <div class="card shadow-sm mb-3">
+      <div class="card-body">
+        <div class="fw-semibold mb-2"><i class="bi bi-tag"></i> Etiqueta e observações</div>
+
+        <div class="form-check mb-2">
+          <input class="form-check-input" type="checkbox" id="cb-etiqueta" name="etiqueta_possui"
+                 {% if not vistoria or vistoria.etiqueta_possui %}checked{% endif %}>
+          <label class="form-check-label" for="cb-etiqueta">Possui etiqueta?</label>
+        </div>
+
+        <div class="mb-2">
+          <label class="form-label" for="sel-etiqueta-cond">Condição da etiqueta</label>
+          <select class="form-select" name="etiqueta_condicao" id="sel-etiqueta-cond">
+            <option value="">— Condição —</option>
+            {% for key,val in etiqueta_choices %}
+              <option value="{{ key }}" {% if vistoria and vistoria.etiqueta_condicao == key %}selected{% endif %}>{{ val }}</option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <div class="mb-2">
+          <label class="form-label">Avaria (opcional)</label>
+          <textarea class="form-control" name="avaria_texto">{% if vistoria %}{{ vistoria.avaria_texto }}{% endif %}</textarea>
+        </div>
+
+        <div>
+          <label class="form-label">Observações (opcional)</label>
+          <textarea class="form-control" name="observacoes">{% if vistoria %}{{ vistoria.observacoes }}{% endif %}</textarea>
+        </div>
+      </div>
+    </div>
+
+    <div class="d-grid gap-2">
+      <button class="btn btn-primary btn-lg" type="submit"><i class="bi bi-save"></i> Salvar (Encontrado)</button>
     </div>
   </form>
 
-  <!-- FORM SEPARADO: NÃO ENCONTRADO (não sofre validação do input file) -->
-    <form method="post" action="{% url 'vistoria_public:marcar_nao_encontrado' sala_id=sala.id tombamento=bem.tombamento %}" style="margin-top:8px;">
-    {% csrf_token %}
-    <button class="btn" type="submit" formnovalidate>Marcar Não encontrado</button>
-    </form>
-
-
-  <!-- FORM SEPARADO: EXCLUIR VISTORIA (também sem validar o file) -->
-  {% if vistoria %}
-    <form method="post" action="" style="margin-top:8px;" onsubmit="return confirm('Excluir vistoria?');">
+  <div class="d-grid gap-2">
+    <form method="post" action="{% url 'vistoria_public:marcar_nao_encontrado' sala_id=sala.id tombamento=bem.tombamento %}">
       {% csrf_token %}
-      <input type="hidden" name="acao" value="excluir">
-      <button class="btn" type="submit" formnovalidate>Excluir</button>
+      <button class="btn btn-outline-danger w-100" type="submit" formnovalidate>
+        <i class="bi bi-x-circle"></i> Marcar Não encontrado
+      </button>
     </form>
-  {% endif %}
 
-  <script>
-    (function(){
-      const form = document.getElementById('form-vistoria');
-      if (!form) return;
-      const $ = (sel) => form.querySelector(sel);
+    {% if vistoria %}
+      <form method="post" action="" onsubmit="return confirm('Excluir vistoria?');">
+        {% csrf_token %}
+        <input type="hidden" name="acao" value="excluir">
+        <button class="btn btn-outline-secondary w-100" type="submit" formnovalidate>
+          <i class="bi bi-trash"></i> Excluir
+        </button>
+      </form>
+    {% endif %}
+  </div>
+{% endblock %}
 
-      const pairs = [
-        ['confere_descricao', '#grp-descricao'],
-        ['confere_numero_serie', '#grp-serie'],
-        ['confere_local', '#grp-local'],
-        ['confere_estado', '#grp-estado'],
-        ['confere_responsavel', '#grp-resp'],
-      ];
-
-      function syncGroup(cbName, grpSel) {
-        const cb = $(`input[name="${cbName}"]`);
-        const grp = $(grpSel);
-        if (!cb || !grp) return;
-        grp.style.display = cb.checked ? 'none' : '';
-        if (cbName === 'confere_local' && !cb.checked) {
-          const sel = $('#sel-sala-obs');
-          const defId = document.getElementById('sala-default-id').value;
-          if (sel && defId) sel.value = String(defId);
-        }
-        if (cb.checked) {
-          grp.querySelectorAll('input, textarea, select').forEach(el => {
-            if (el.tagName === 'SELECT') el.selectedIndex = 0;
-            else el.value = '';
-          });
-        }
-      }
-
-      function init() {
-        pairs.forEach(([name, grp]) => {
-          syncGroup(name, grp);
-          const cb = $(`input[name="${name}"]`);
-          if (cb) cb.addEventListener('change', () => syncGroup(name, grp));
-        });
-
-        const cbEti = $('input[name="etiqueta_possui"]');
-        const selCond = $('#sel-etiqueta-cond');
-        function syncEti() {
-          if (!cbEti || !selCond) return;
-          selCond.disabled = !cbEti.checked;
-          if (!cbEti.checked) selCond.selectedIndex = 0;
-        }
-        syncEti();
-        if (cbEti) cbEti.addEventListener('change', syncEti);
-      }
-      init();
-    })();
-  </script>
+{% block extra_js %}
+<script>
+(function(){
+  const form=document.getElementById('form-vistoria'); if(!form) return;
+  const $=sel=>form.querySelector(sel);
+  const pairs=[
+    ['confere_descricao','#grp-descricao','#cb-desc'],
+    ['confere_numero_serie','#grp-serie','#cb-serie'],
+    ['confere_local','#grp-local','#cb-local'],
+    ['confere_estado','#grp-estado','#cb-estado'],
+    ['confere_responsavel','#grp-resp','#cb-resp'],
+  ];
+  function syncGroup(name,grpSel,cbSel){
+    const cb=document.querySelector(cbSel); const grp=$(grpSel); if(!cb||!grp) return;
+    grp.style.display = cb.checked ? 'none' : '';
+    if(name==='confere_local' && !cb.checked){
+      const sel=$('#sel-sala-obs'); const defId=document.getElementById('sala-default-id').value;
+      if(sel && defId) sel.value=String(defId);
+    }
+    if(cb.checked){ grp.querySelectorAll('input,textarea,select').forEach(el=>{ if(el.tagName==='SELECT'){el.selectedIndex=0;} else {el.value='';} }); }
+  }
+  pairs.forEach(([n,g,c])=>{ syncGroup(n,g,c); const cb=document.querySelector(c); if(cb){cb.addEventListener('change',()=>syncGroup(n,g,c));} });
+  const cbEti=document.getElementById('cb-etiqueta'), selCond=document.getElementById('sel-etiqueta-cond');
+  function syncEti(){ if(selCond){ selCond.disabled=!cbEti.checked; if(!cbEti.checked) selCond.selectedIndex=0; } }
+  if(cbEti){ syncEti(); cbEti.addEventListener('change',syncEti); }
+})();
+</script>
 {% endblock %}

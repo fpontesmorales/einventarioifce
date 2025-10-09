@@ -12,9 +12,8 @@ def upload_foto_bem(instance, filename):
 def upload_foto_extra(instance, filename):
     safe = str(filename).replace(" ", "_")
     return f"vistorias/{safe}"
+
 # -----------------------------------------------------
-
-
 def split_sala_bloco(s: str | None):
     """
     Entrada: "NOME DA SALA (ALGO OPCIONAL)(BLOCO X)" -> ("NOME DA SALA (ALGO OPCIONAL)", "BLOCO X")
@@ -25,6 +24,7 @@ def split_sala_bloco(s: str | None):
     s = s.strip()
     if not s:
         return (None, None)
+
     if s.endswith(")") and "(" in s:
         try:
             ini = s.rindex("(")
@@ -58,8 +58,8 @@ class Inventario(models.Model):
         - exclui livros (ED == '4490.52.18') quando incluir_livros=False
         """
         from patrimonio.models import Bem  # evitar import circular
-
         qs = Bem.objects.all()
+
         field_names = {f.name for f in Bem._meta.get_fields() if hasattr(f, "attname")}
 
         # Excluir baixados
@@ -88,6 +88,7 @@ class Inventario(models.Model):
         baixado = getattr(bem, "baixado", None)
         if baixado is True:
             return False
+
         situacao = (getattr(bem, "situacao", "") or getattr(bem, "status", "") or "").strip().upper()
         if situacao == "BAIXADO":
             return False
@@ -96,6 +97,7 @@ class Inventario(models.Model):
             ed = (getattr(bem, "ed", "") or getattr(bem, "elemento_despesa", "") or "").strip()
             if ed == "4490.52.18":
                 return False
+
         return True
 
 
@@ -106,7 +108,6 @@ class VistoriaBem(models.Model):
 
     inventario = models.ForeignKey(Inventario, on_delete=models.CASCADE)
     bem = models.ForeignKey("patrimonio.Bem", on_delete=models.CASCADE)
-
     status = models.CharField(max_length=20, choices=Status.choices, default=Status.ENCONTRADO)
 
     # conferências
@@ -135,7 +136,6 @@ class VistoriaBem(models.Model):
 
     avaria_texto = models.TextField(null=True, blank=True)
     observacoes = models.TextField(null=True, blank=True)
-
     foto_marcadagua = models.ImageField(upload_to="vistorias/", null=True, blank=True)
 
     # Campo persistido no banco (NOT NULL em migração antiga)
@@ -151,13 +151,21 @@ class VistoriaBem(models.Model):
 
     # ---- helpers ----
     def _recompute_divergente(self) -> bool:
-        val = any([
-            not self.confere_descricao,
-            not self.confere_numero_serie,
-            not self.confere_local,
-            not self.confere_estado,
-            not self.confere_responsavel,
-        ])
+        """
+        Regras de divergência:
+        - Qualquer conferência marcada como NÃO confere
+        - **Etiqueta ausente** (etiqueta_possui == False)  ← correção solicitada
+        """
+        val = any(
+            [
+                not self.confere_descricao,
+                not self.confere_numero_serie,
+                not self.confere_local,
+                not self.confere_estado,
+                not self.confere_responsavel,
+                not self.etiqueta_possui,  # <- NOVO: sem etiqueta = divergente
+            ]
+        )
         self.divergente = val
         return val
 
@@ -182,9 +190,11 @@ class VistoriaBem(models.Model):
             return False
         if self.confere_local:
             return False
+
         obs = self._obs_sala_tuple()
         if not obs:
             return False
+
         suap = self._suap_sala_tuple()
 
         def norm(t):
@@ -204,6 +214,7 @@ class VistoriaBem(models.Model):
 class VistoriaExtra(models.Model):
     inventario = models.ForeignKey(Inventario, on_delete=models.CASCADE)
     descricao_obs = models.TextField()
+
     sala_obs_nome = models.CharField(max_length=255, null=True, blank=True)
     sala_obs_bloco = models.CharField(max_length=255, null=True, blank=True)
     numero_serie_obs = models.CharField(max_length=200, null=True, blank=True)
@@ -214,8 +225,8 @@ class VistoriaExtra(models.Model):
     etiqueta_condicao = models.CharField(
         max_length=20, choices=VistoriaBem.EtiquetaCondicao.choices, null=True, blank=True
     )
-    observacoes = models.TextField(null=True, blank=True)
 
+    observacoes = models.TextField(null=True, blank=True)
     foto_marcadagua = models.ImageField(upload_to="vistorias/", null=True, blank=True)
 
     criado_por = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, related_name="extras_criados")

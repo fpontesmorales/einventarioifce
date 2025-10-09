@@ -1,183 +1,267 @@
+{# vistoria/templates/vistoria/sala_workspace.html #}
 {% extends "vistoria/base_vistoria.html" %}
+
 {% block title %}Sala — {{ sala.nome }}{% endblock %}
+{% block page_prefix %}<i class="bi bi-door-open"></i> Sala{% endblock %}
+{% block page_title %}{{ sala.nome }}{% endblock %}
+{% block page_subtitle %}
+  Bloco: <span class="fw-semibold">{{ sala.bloco|default:"SEM BLOCO" }}</span>
+  · Elegíveis: <span class="fw-semibold">{{ total_elegiveis }}</span>
+  · Vistoriados: <span class="fw-semibold">{{ vistoriados_count }}</span>
+  (<span class="fw-semibold">{{ pct_vistoriado }}%</span>)
+{% endblock %}
+{% block page_actions %}
+  <a class="btn btn-outline-secondary"
+     href="{% url 'vistoria_public:salas_por_bloco' bloco=sala.bloco|default:'SEM BLOCO' %}">
+    <i class="bi bi-arrow-left"></i> Voltar às salas
+  </a>
+{% endblock %}
+
+{% block page_toolbar %}
+<div class="mt-3">
+  <form class="input-group" method="post" action="{% url 'vistoria_public:vistoriar_por_tombo' sala_id=sala.id %}" id="formTombo">
+    {% csrf_token %}
+    <span class="input-group-text"><i class="bi bi-upc-scan"></i></span>
+    <input type="text" class="form-control" id="inpMaster" name="tombamento"
+           placeholder="Tombo ou buscar na aba…" inputmode="numeric" autocomplete="off">
+    <button type="submit" class="btn btn-primary">
+      <i class="bi bi-clipboard-check"></i> Vistoriar
+    </button>
+    <button type="button" class="btn btn-outline-secondary" id="btnFiltrar">
+      <i class="bi bi-funnel"></i> Filtrar
+    </button>
+    <a class="btn btn-outline-dark" href="{% url 'vistoria_public:extra_novo' sala_id=sala.id %}">
+      <i class="bi bi-clipboard-plus"></i> Item sem registro
+    </a>
+  </form>
+  <div class="form-text mt-1">Digite no campo e use <strong>Vistoriar</strong> (POST) ou <strong>Filtrar</strong> (aba ativa).</div>
+</div>
+{% endblock %}
 
 {% block content %}
+<ul class="nav nav-pills gap-2 mb-3" id="tabs" role="tablist">
+  <li class="nav-item">
+    <a class="nav-link d-flex gap-2" id="tab-nao" data-bs-toggle="tab" href="#pane-nao" data-tab="nao">
+      <i class="bi bi-hourglass-split"></i> Não vistoriados <span class="badge text-bg-secondary">{{ nao_vistoriados|length }}</span>
+    </a>
+  </li>
+  <li class="nav-item">
+    <a class="nav-link d-flex gap-2" id="tab-ok" data-bs-toggle="tab" href="#pane-ok" data-tab="ok">
+      <i class="bi bi-check-circle"></i> Vistoriados (OK) <span class="badge text-bg-success">{{ vistoriados_ok|length }}</span>
+    </a>
+  </li>
+  <li class="nav-item">
+    <a class="nav-link d-flex gap-2" id="tab-div" data-bs-toggle="tab" href="#pane-div" data-tab="div">
+      <i class="bi bi-exclamation-triangle"></i> Divergentes <span class="badge text-bg-warning">{{ vistoriados_div|length }}</span>
+    </a>
+  </li>
+  <li class="nav-item">
+    <a class="nav-link d-flex gap-2" id="tab-naoen" data-bs-toggle="tab" href="#pane-naoen" data-tab="naoen">
+      <i class="bi bi-x-circle"></i> Não encontrados <span class="badge text-bg-danger">{{ nao_encontrados|length }}</span>
+    </a>
+  </li>
+  <li class="nav-item">
+    <a class="nav-link d-flex gap-2" id="tab-mov" data-bs-toggle="tab" href="#pane-mov" data-tab="mov">
+      <i class="bi bi-arrow-left-right"></i> Em outra sala <span class="badge text-bg-info">{{ movidos|length }}</span>
+    </a>
+  </li>
+  <li class="nav-item">
+    <a class="nav-link d-flex gap-2" id="tab-rec" data-bs-toggle="tab" href="#pane-rec" data-tab="rec">
+      <i class="bi bi-sign-turn-right"></i> Cadastrados p/ outra <span class="badge text-bg-secondary">{{ recebidos_aqui|length }}</span>
+    </a>
+  </li>
+  <li class="nav-item">
+    <a class="nav-link d-flex gap-2" id="tab-ext" data-bs-toggle="tab" href="#pane-ext" data-tab="ext">
+      <i class="bi bi-clipboard-plus"></i> Sem registro <span class="badge text-bg-dark">{{ extras|length }}</span>
+    </a>
+  </li>
+</ul>
 
-  <!-- Cabeçalho da sala e progresso -->
-  <div class="card">
-    <div class="row wrap" style="justify-content:space-between;align-items:center;">
-      <div>
-        <div class="muted">Sala</div>
-        <div class="stat">{{ sala.nome }}</div>
-        <div class="muted">Bloco: {{ sala.bloco|default:"SEM BLOCO" }}</div>
-      </div>
-      <a class="btn" href="{% url 'vistoria_public:salas_por_bloco' bloco=sala.bloco|default:'SEM BLOCO' %}">← Voltar às salas</a>
-    </div>
-
-    <div class="muted" style="margin-top:6px;">
-      Total elegíveis: <strong>{{ total_elegiveis }}</strong> —
-      Vistoriados: <strong>{{ vistoriados_count }}</strong> ({{ pct_vistoriado }}%)
-    </div>
-    <div class="progress" style="margin-top:8px;">
-      <div class="bar" style="width: {{ pct_vistoriado }}%;"></div>
-    </div>
+<div class="tab-content">
+  {# Não vistoriados #}
+  <div class="tab-pane fade" id="pane-nao" data-pane="nao">
+    {% if nao_vistoriados %}
+      <ul class="list-group list-group-flush">
+        {% for b in nao_vistoriados %}
+          <li class="list-group-item d-flex justify-content-between align-items-start" data-search="{{ b.tombamento }} {{ b.descricao|default:'' }}">
+            <div class="me-3">
+              <div class="fw-semibold">{{ b.tombamento }}</div>
+              <div class="text-muted small">{{ b.descricao }}</div>
+            </div>
+            <a class="btn btn-outline-primary"
+               href="{% url 'vistoria_public:vistoria_bem_form' sala_id=sala.id tombamento=b.tombamento %}">
+              <i class="bi bi-clipboard-check"></i> Vistoriar
+            </a>
+          </li>
+        {% endfor %}
+      </ul>
+    {% else %}<div class="alert alert-light border">Nenhum item pendente nesta sala.</div>{% endif %}
   </div>
 
-  <!-- Ações rápidas -->
-  <div class="grid" style="grid-template-columns: 1fr; gap:8px;">
-    <form method="post" action="{% url 'vistoria_public:vistoriar_por_tombo' sala_id=sala.id %}">
-      {% csrf_token %}
-      <input name="tombamento" type="text" placeholder="Digite o tombamento e tecle Enter…" autofocus />
-    </form>
-    <div class="top-actions">
-      <a class="btn primary" href="{% url 'vistoria_public:extra_novo' sala_id=sala.id %}">+ Item sem registro</a>
-    </div>
+  {# OK #}
+  <div class="tab-pane fade" id="pane-ok" data-pane="ok">
+    {% if vistoriados_ok %}
+      <ul class="list-group list-group-flush">
+        {% for b, v in vistoriados_ok %}
+          <li class="list-group-item d-flex justify-content-between align-items-start" data-search="{{ b.tombamento }} {{ b.descricao|default:'' }}">
+            <div class="me-3">
+              <div class="fw-semibold">{{ b.tombamento }}</div>
+              <div class="text-muted small">{{ b.descricao }}</div>
+            </div>
+            <a class="btn btn-outline-secondary"
+               href="{% url 'vistoria_public:vistoria_bem_form' sala_id=sala.id tombamento=b.tombamento %}">
+              <i class="bi bi-pencil-square"></i> Editar
+            </a>
+          </li>
+        {% endfor %}
+      </ul>
+    {% else %}<div class="alert alert-light border">Nenhum item sem divergência ainda.</div>{% endif %}
   </div>
 
-  <!-- NÃO VISTORIADOS -->
-  <h3 class="group-title">Não vistoriados ({{ nao_vistoriados|length }})</h3>
-  {% if nao_vistoriados %}
-    <div class="grid cards">
-      {% for b in nao_vistoriados %}
-        <div class="card">
-          <div class="row" style="justify-content:space-between;align-items:center;">
-            <div>
-              <div class="stat">{{ b.tombamento }}</div>
-              <div class="muted">{{ b.descricao }}</div>
+  {# Divergentes #}
+  <div class="tab-pane fade" id="pane-div" data-pane="div">
+    {% if vistoriados_div %}
+      <ul class="list-group list-group-flush">
+        {% for b, v in vistoriados_div %}
+          <li class="list-group-item d-flex justify-content-between align-items-start" data-search="{{ b.tombamento }} {{ b.descricao|default:'' }}">
+            <div class="me-3">
+              <div class="fw-semibold">{{ b.tombamento }}</div>
+              <div class="text-muted small">{{ b.descricao }}</div>
             </div>
-            <a class="btn" href="{% url 'vistoria_public:vistoria_bem_form' sala_id=sala.id tombamento=b.tombamento %}">Vistoriar →</a>
-          </div>
-        </div>
-      {% endfor %}
-    </div>
-  {% else %}
-    <div class="card"><div class="muted">Nenhum item pendente.</div></div>
-  {% endif %}
+            <a class="btn btn-warning"
+               href="{% url 'vistoria_public:vistoria_bem_form' sala_id=sala.id tombamento=b.tombamento %}">
+              <i class="bi bi-exclamation-triangle"></i> Revisar
+            </a>
+          </li>
+        {% endfor %}
+      </ul>
+    {% else %}<div class="alert alert-light border">Nenhum item com divergência.</div>{% endif %}
+  </div>
 
-  <!-- VISTORIADOS (SEM DIVERGÊNCIA) -->
-  <h3 class="group-title">Vistoriados (sem divergência) ({{ vistoriados_ok|length }})</h3>
-  {% if vistoriados_ok %}
-    <div class="grid cards">
-      {% for b, v in vistoriados_ok %}
-        <div class="card ok">
-          <div class="row" style="justify-content:space-between;align-items:center;">
-            <div>
-              <div class="stat">{{ b.tombamento }}</div>
-              <div class="muted">{{ b.descricao }}</div>
+  {# Não encontrados #}
+  <div class="tab-pane fade" id="pane-naoen" data-pane="naoen">
+    {% if nao_encontrados %}
+      <ul class="list-group list-group-flush">
+        {% for b, v in nao_encontrados %}
+          <li class="list-group-item d-flex justify-content-between align-items-start" data-search="{{ b.tombamento }} {{ b.descricao|default:'' }}">
+            <div class="me-3">
+              <div class="fw-semibold">{{ b.tombamento }}</div>
+              <div class="text-muted small">{{ b.descricao }}</div>
             </div>
-            <a class="btn" href="{% url 'vistoria_public:vistoria_bem_form' sala_id=sala.id tombamento=b.tombamento %}">Editar →</a>
-          </div>
-        </div>
-      {% endfor %}
-    </div>
-  {% else %}
-    <div class="card"><div class="muted">Nenhum item sem divergência ainda.</div></div>
-  {% endif %}
+            <a class="btn btn-outline-success"
+               href="{% url 'vistoria_public:vistoria_bem_form' sala_id=sala.id tombamento=b.tombamento %}">
+              <i class="bi bi-check2-circle"></i> Marcar encontrado
+            </a>
+          </li>
+        {% endfor %}
+      </ul>
+    {% else %}<div class="alert alert-light border">Nenhum item marcado como não encontrado.</div>{% endif %}
+  </div>
 
-  <!-- VISTORIADOS (COM DIVERGÊNCIA) -->
-  <h3 class="group-title">Vistoriados (com divergência) ({{ vistoriados_div|length }})</h3>
-  {% if vistoriados_div %}
-    <div class="grid cards">
-      {% for b, v in vistoriados_div %}
-        <div class="card div">
-          <div class="row" style="justify-content:space-between;align-items:center;">
-            <div>
-              <div class="stat">{{ b.tombamento }}</div>
-              <div class="muted">{{ b.descricao }}</div>
+  {# Movidos #}
+  <div class="tab-pane fade" id="pane-mov" data-pane="mov">
+    {% if movidos %}
+      <ul class="list-group list-group-flush">
+        {% for b, v in movidos %}
+          <li class="list-group-item d-flex justify-content-between align-items-start"
+              data-search="{{ b.tombamento }} {{ b.descricao|default:'' }} {{ v.sala_obs_nome|default:'' }} {{ v.sala_obs_bloco|default:'' }}">
+            <div class="me-3">
+              <div class="fw-semibold">{{ b.tombamento }}</div>
+              <div class="text-muted small">{{ b.descricao }}</div>
+              <div class="small text-muted"><i class="bi bi-arrow-left-right"></i> Vistoriado em: {{ v.sala_obs_nome }} ({{ v.sala_obs_bloco|default:"SEM BLOCO" }})</div>
             </div>
-            <a class="btn" href="{% url 'vistoria_public:vistoria_bem_form' sala_id=sala.id tombamento=b.tombamento %}">Revisar →</a>
-          </div>
-        </div>
-      {% endfor %}
-    </div>
-  {% else %}
-    <div class="card"><div class="muted">Nenhum item com divergência.</div></div>
-  {% endif %}
+            <a class="btn btn-outline-primary"
+               href="{% url 'vistoria_public:vistoria_bem_form' sala_id=sala.id tombamento=b.tombamento %}">
+              <i class="bi bi-eye"></i> Detalhar
+            </a>
+          </li>
+        {% endfor %}
+      </ul>
+    {% else %}<div class="alert alert-light border">Nenhum item movido para outra sala.</div>{% endif %}
+  </div>
 
-  <!-- NÃO ENCONTRADOS -->
-  <h3 class="group-title">Não encontrados ({{ nao_encontrados|length }})</h3>
-  {% if nao_encontrados %}
-    <div class="grid cards">
-      {% for b, v in nao_encontrados %}
-        <div class="card na">
-          <div class="row" style="justify-content:space-between;align-items:center;">
-            <div>
-              <div class="stat">{{ b.tombamento }}</div>
-              <div class="muted">{{ b.descricao }}</div>
+  {# Recebidos aqui #}
+  <div class="tab-pane fade" id="pane-rec" data-pane="rec">
+    {% if recebidos_aqui %}
+      <ul class="list-group list-group-flush">
+        {% for b, v in recebidos_aqui %}
+          <li class="list-group-item d-flex justify-content-between align-items-start"
+              data-search="{{ b.tombamento }} {{ b.descricao|default:'' }} {{ b.sala|default:'' }}">
+            <div class="me-3">
+              <div class="fw-semibold">{{ b.tombamento }}</div>
+              <div class="text-muted small">{{ b.descricao }}</div>
+              <div class="small text-muted"><i class="bi bi-sign-turn-right"></i> SUAP: {{ b.sala }}</div>
             </div>
-            <a class="btn" href="{% url 'vistoria_public:vistoria_bem_form' sala_id=sala.id tombamento=b.tombamento %}">Marcar encontrado →</a>
-          </div>
-        </div>
-      {% endfor %}
-    </div>
-  {% else %}
-    <div class="card"><div class="muted">Nenhum item marcado como não encontrado.</div></div>
-  {% endif %}
+            <a class="btn btn-outline-secondary"
+               href="{% url 'vistoria_public:vistoria_bem_form' sala_id=sala.id tombamento=b.tombamento %}">
+              <i class="bi bi-pencil-square"></i> Revisar
+            </a>
+          </li>
+        {% endfor %}
+      </ul>
+    {% else %}<div class="alert alert-light border">Nenhum item recebido aqui com SUAP apontando outra sala.</div>{% endif %}
+  </div>
 
-  <!-- ENCONTRADOS EM OUTRA SALA (itens desta sala no SUAP, vistos fora) -->
-  <h3 class="group-title">Encontrados em outra sala ({{ movidos|length }})</h3>
-  {% if movidos %}
-    <div class="grid cards">
-      {% for b, v in movidos %}
-        <div class="card mv">
-          <div class="row" style="justify-content:space-between;align-items:center;">
-            <div>
-              <div class="stat">{{ b.tombamento }}</div>
-              <div class="muted">Vistoriado em: {{ v.sala_obs_nome }} ({{ v.sala_obs_bloco|default:"SEM BLOCO" }})</div>
-              <div class="muted">{{ b.descricao }}</div>
-            </div>
-            <a class="btn" href="{% url 'vistoria_public:vistoria_bem_form' sala_id=sala.id tombamento=b.tombamento %}">Detalhar →</a>
-          </div>
-        </div>
-      {% endfor %}
-    </div>
-  {% else %}
-    <div class="card"><div class="muted">Nenhum item movido para outra sala.</div></div>
-  {% endif %}
-
-  <!-- CADASTRADOS NO SUAP EM OUTRA SALA (vistoriados aqui) -->
-  <h3 class="group-title">Cadastrados no SUAP em outra sala (vistoriados aqui) ({{ recebidos_aqui|length }})</h3>
-  {% if recebidos_aqui %}
-    <div class="grid cards">
-      {% for b, v in recebidos_aqui %}
-        <div class="card sr">
-          <div class="row" style="justify-content:space-between;align-items:center;">
-            <div>
-              <div class="stat">{{ b.tombamento }}</div>
-              <div class="muted">SUAP: {{ b.sala }}</div>
-              <div class="muted">{{ b.descricao }}</div>
-            </div>
-            <a class="btn" href="{% url 'vistoria_public:vistoria_bem_form' sala_id=sala.id tombamento=b.tombamento %}">Revisar →</a>
-          </div>
-        </div>
-      {% endfor %}
-    </div>
-  {% else %}
-    <div class="card"><div class="muted">Nenhum item recebido aqui com SUAP apontando outra sala.</div></div>
-  {% endif %}
-
-  <!-- ITENS SEM REGISTRO (EXTRAS) — AGORA CLICÁVEIS -->
-  <h3 class="group-title">Itens sem registro ({{ extras|length }})</h3>
-  {% if extras %}
-    <div class="grid cards">
-      {% for ex in extras %}
-        <a class="card" href="{% url 'vistoria_public:vistoria_extra_detalhe' sala_id=sala.id extra_id=ex.id %}">
-          <div class="row" style="justify-content:space-between;align-items:center;">
-            <div>
-              <div class="stat">{{ ex.descricao_obs|default:"(sem descrição)" }}</div>
-              <div class="muted">
-                Nº Série: {{ ex.numero_serie_obs|default:"—" }} &nbsp;|&nbsp;
-                Estado: {{ ex.estado_obs|default:"—" }} &nbsp;|&nbsp;
-                Responsável: {{ ex.responsavel_obs|default:"—" }}
+  {# Extras #}
+  <div class="tab-pane fade" id="pane-ext" data-pane="ext">
+    {% if extras %}
+      <ul class="list-group list-group-flush">
+        {% for ex in extras %}
+          <li class="list-group-item d-flex justify-content-between align-items-start"
+              data-search="{{ ex.descricao_obs|default:'' }} {{ ex.numero_serie_obs|default:'' }} {{ ex.estado_obs|default:'' }} {{ ex.responsavel_obs|default:'' }}">
+            <div class="me-3">
+              <div class="fw-semibold">{{ ex.descricao_obs|default:"(sem descrição)" }}</div>
+              <div class="small text-muted">
+                Nº Série: {{ ex.numero_serie_obs|default:"—" }} ·
+                Estado: {{ ex.estado_obs|default:"—" }} ·
+                Resp.: {{ ex.responsavel_obs|default:"—" }}
               </div>
             </div>
-            <div class="muted">Ver detalhes →</div>
-          </div>
-        </a>
-      {% endfor %}
-    </div>
-  {% else %}
-    <div class="card"><div class="muted">Nenhum item extra nesta sala.</div></div>
-  {% endif %}
+            <a class="btn btn-outline-dark"
+               href="{% url 'vistoria_public:vistoria_extra_detalhe' sala_id=sala.id extra_id=ex.id %}">
+              <i class="bi bi-eye"></i> Ver detalhes
+            </a>
+          </li>
+        {% endfor %}
+      </ul>
+    {% else %}<div class="alert alert-light border">Nenhum item extra nesta sala.</div>{% endif %}
+  </div>
+</div>
+{% endblock %}
 
+{% block extra_js %}
+<script>
+(function(){
+  const tabs = document.querySelectorAll('#tabs .nav-link');
+  const inp = document.getElementById('inpMaster');
+  const btnFiltrar = document.getElementById('btnFiltrar');
+
+  function initialTabFromHash(){ const m=(location.hash||'').match(/t=([a-z]+)/); return m?m[1]:'nao'; }
+  function showTab(name){ const link=document.querySelector(`#tabs .nav-link[data-tab="${name}"]`); if(link){ new bootstrap.Tab(link).show(); } }
+
+  function applyFilter(){
+    const q=(inp.value||'').toLowerCase();
+    const activePane=document.querySelector('.tab-pane.active.show')||document.querySelector('.tab-pane.active');
+    if(!activePane) return;
+    activePane.querySelectorAll('[data-search]').forEach(el=>{
+      const hay=(el.getAttribute('data-search')||'').toLowerCase();
+      el.classList.toggle('d-none', !hay.includes(q));
+    });
+  }
+
+  tabs.forEach(link=>{
+    link.addEventListener('shown.bs.tab', e=>{
+      const name=e.target.getAttribute('data-tab');
+      history.replaceState(null,'','#t='+name);
+      applyFilter();
+    });
+  });
+
+  if (btnFiltrar) btnFiltrar.addEventListener('click', applyFilter);
+  if (inp) inp.addEventListener('input', applyFilter);
+
+  showTab(initialTabFromHash());
+  applyFilter();
+})();
+</script>
 {% endblock %}

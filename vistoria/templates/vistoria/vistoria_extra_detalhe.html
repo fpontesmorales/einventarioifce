@@ -1,66 +1,76 @@
+{# vistoria/templates/vistoria/vistoria_extra_detalhe.html #}
 {% extends "vistoria/base_vistoria.html" %}
 {% block title %}Item sem registro — {{ sala.nome }}{% endblock %}
 
+{% block page_prefix %}<i class="bi bi-clipboard-plus"></i> Sem registro{% endblock %}
+{% block page_title %}Item sem registro{% endblock %}
+{% block page_subtitle %}{{ sala.nome }}{% if sala.bloco %} — {{ sala.bloco }}{% else %} — SEM BLOCO{% endif %}{% endblock %}
+{% block page_actions %}
+  <a class="btn btn-outline-secondary" href="{% url 'vistoria_public:sala_workspace' sala_id=sala.id %}">
+    <i class="bi bi-arrow-left"></i> Voltar à sala
+  </a>
+{% endblock %}
+
 {% block content %}
-  <div class="card">
-    <div class="row" style="justify-content:space-between;align-items:center;">
-      <div>
-        <div class="muted">Sala</div>
-        <div class="stat">{{ sala.nome }}</div>
-        <div class="muted">Bloco: {{ sala.bloco|default:"SEM BLOCO" }}</div>
-      </div>
-      <a class="btn" href="{% url 'vistoria_public:sala_workspace' sala_id=sala.id %}">← Voltar à sala</a>
-    </div>
-  </div>
+  <div class="row g-3">
+    <div class="col-12 col-lg-7">
+      <div class="card shadow-sm">
+        <div class="card-body">
+          <h2 class="h6 mb-3"><i class="bi bi-info-circle"></i> Dados do item</h2>
 
-  <div class="grid" style="grid-template-columns: 1fr; gap:12px;">
-
-    <div class="card">
-      <h3 style="margin-top:0;">Dados do item sem registro</h3>
-      <div class="muted">Descrição observada</div>
-      <div class="stat">{{ extra.descricao_obs }}</div>
-
-      <div class="grid" style="grid-template-columns: 1fr 1fr; gap:8px; margin-top:10px;">
-        <div>
-          <div class="muted">Nº de série</div>
-          <div>{{ extra.numero_serie_obs|default:"—" }}</div>
-        </div>
-        <div>
-          <div class="muted">Estado</div>
-          <div>{{ extra.estado_obs|default:"—" }}</div>
-        </div>
-        <div>
-          <div class="muted">Responsável</div>
-          <div>{{ extra.responsavel_obs|default:"—" }}</div>
-        </div>
-        <div>
-          <div class="muted">Etiqueta</div>
-          <div>
-            {% if extra.etiqueta_possui %}
-              Possui{% if extra.etiqueta_condicao %} — {{ extra.etiqueta_condicao }}{% endif %}
-            {% else %}
-              Não possui
-            {% endif %}
+          <div class="mb-3">
+            <div class="text-muted small">Descrição observada</div>
+            <div class="fw-semibold">{{ extra.descricao_obs }}</div>
           </div>
+
+          <div class="row g-3">
+            <div class="col-12 col-md-6">
+              <div class="text-muted small">Nº de série</div>
+              <div>{{ extra.numero_serie_obs|default:"—" }}</div>
+            </div>
+            <div class="col-12 col-md-6">
+              <div class="text-muted small">Estado</div>
+              <div>{{ extra.estado_obs|default:"—" }}</div>
+            </div>
+            <div class="col-12 col-md-6">
+              <div class="text-muted small">Responsável</div>
+              <div>{{ extra.responsavel_obs|default:"—" }}</div>
+            </div>
+            <div class="col-12 col-md-6">
+              <div class="text-muted small">Etiqueta</div>
+              <div>
+                {% if extra.etiqueta_possui %}
+                  Possui{% if extra.etiqueta_condicao %}
+                    — {{ extra.get_etiqueta_condicao_display|default:extra.etiqueta_condicao }}
+                  {% endif %}
+                {% else %}
+                  Não possui
+                {% endif %}
+              </div>
+            </div>
+          </div>
+
+          {% if extra.observacoes %}
+            <div class="mt-3">
+              <div class="text-muted small">Observações</div>
+              <div>{{ extra.observacoes }}</div>
+            </div>
+          {% endif %}
         </div>
       </div>
+    </div>
 
-      {% if extra.observacoes %}
-        <div style="margin-top:10px;">
-          <div class="muted">Observações</div>
-          <div>{{ extra.observacoes }}</div>
+    <div class="col-12 col-lg-5">
+      <div class="card shadow-sm">
+        <div class="card-body">
+          <h2 class="h6 mb-3"><i class="bi bi-image"></i> Foto</h2>
+          {% if extra.foto_marcadagua %}
+            <img src="{{ extra.foto_marcadagua.url }}" alt="Foto do item sem registro" class="img-fluid rounded border">
+          {% else %}
+            <div class="alert alert-light border mb-0">Sem foto.</div>
+          {% endif %}
         </div>
-      {% endif %}
+      </div>
     </div>
-
-    <div class="card">
-      <h3 style="margin-top:0;">Foto</h3>
-      {% if extra.foto_marcadagua %}
-        <img src="{{ extra.foto_marcadagua.url }}" alt="Foto do item sem registro" style="max-width:100%; border-radius:12px; border:1px solid #e5e7eb;">
-      {% else %}
-        <div class="muted">Sem foto.</div>
-      {% endif %}
-    </div>
-
   </div>
 {% endblock %}
