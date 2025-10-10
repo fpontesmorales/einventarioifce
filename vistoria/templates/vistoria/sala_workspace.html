@@ -19,71 +19,106 @@
 
 {% block page_toolbar %}
 <div class="mt-3">
-  <form class="input-group" method="post" action="{% url 'vistoria_public:vistoriar_por_tombo' sala_id=sala.id %}" id="formTombo">
+
+  {# ---- MOBILE (xs–sm): busca em cima, botões embaixo ---- #}
+  <form class="d-md-none" method="post" action="{% url 'vistoria_public:vistoriar_por_tombo' sala_id=sala.id %}" id="formTomboSm">
+    {% csrf_token %}
+    <div class="input-group">
+      <span class="input-group-text"><i class="bi bi-upc-scan"></i></span>
+      <input type="search" class="form-control" data-role="search" id="inpMasterSm" name="tombamento"
+             placeholder="Tombo ou buscar na lista…" autocomplete="off">
+    </div>
+    <div class="row g-2 mt-2">
+      <div class="col-12 col-sm-4">
+        <button type="submit" class="btn btn-primary w-100">
+          <i class="bi bi-clipboard-check"></i> Vistoriar
+        </button>
+      </div>
+      <div class="col-6 col-sm-4">
+        <button type="button" class="btn btn-outline-secondary w-100" id="btnFiltrarSm">
+          <i class="bi bi-funnel"></i> Filtrar
+        </button>
+      </div>
+      <div class="col-6 col-sm-4">
+        <a class="btn btn-outline-dark w-100" href="{% url 'vistoria_public:extra_novo' sala_id=sala.id %}">
+          <i class="bi bi-clipboard-plus"></i> Item sem registro
+        </a>
+      </div>
+    </div>
+    <div class="form-text mt-1">
+      Digite e use <strong>Vistoriar</strong> (POST) ou <strong>Filtrar</strong> (lista ativa).
+    </div>
+  </form>
+
+  {# ---- ≥ md: tudo em uma linha ---- #}
+  <form class="input-group flex-nowrap d-none d-md-flex"
+        method="post" action="{% url 'vistoria_public:vistoriar_por_tombo' sala_id=sala.id %}" id="formTomboLg">
     {% csrf_token %}
     <span class="input-group-text"><i class="bi bi-upc-scan"></i></span>
-    <input type="text" class="form-control" id="inpMaster" name="tombamento"
-           placeholder="Tombo ou buscar na aba…" inputmode="numeric" autocomplete="off">
+    <input type="search" class="form-control" data-role="search" id="inpMasterLg" name="tombamento"
+           placeholder="Tombo ou buscar na lista…" autocomplete="off">
     <button type="submit" class="btn btn-primary">
       <i class="bi bi-clipboard-check"></i> Vistoriar
     </button>
-    <button type="button" class="btn btn-outline-secondary" id="btnFiltrar">
+    <button type="button" class="btn btn-outline-secondary" id="btnFiltrarLg">
       <i class="bi bi-funnel"></i> Filtrar
     </button>
     <a class="btn btn-outline-dark" href="{% url 'vistoria_public:extra_novo' sala_id=sala.id %}">
       <i class="bi bi-clipboard-plus"></i> Item sem registro
     </a>
   </form>
-  <div class="form-text mt-1">Digite no campo e use <strong>Vistoriar</strong> (POST) ou <strong>Filtrar</strong> (aba ativa).</div>
+
 </div>
 {% endblock %}
 
 {% block content %}
-<ul class="nav nav-pills gap-2 mb-3" id="tabs" role="tablist">
-  <li class="nav-item">
-    <a class="nav-link d-flex gap-2" id="tab-nao" data-bs-toggle="tab" href="#pane-nao" data-tab="nao">
-      <i class="bi bi-hourglass-split"></i> Não vistoriados <span class="badge text-bg-secondary">{{ nao_vistoriados|length }}</span>
-    </a>
-  </li>
-  <li class="nav-item">
-    <a class="nav-link d-flex gap-2" id="tab-ok" data-bs-toggle="tab" href="#pane-ok" data-tab="ok">
-      <i class="bi bi-check-circle"></i> Vistoriados (OK) <span class="badge text-bg-success">{{ vistoriados_ok|length }}</span>
-    </a>
-  </li>
-  <li class="nav-item">
-    <a class="nav-link d-flex gap-2" id="tab-div" data-bs-toggle="tab" href="#pane-div" data-tab="div">
-      <i class="bi bi-exclamation-triangle"></i> Divergentes <span class="badge text-bg-warning">{{ vistoriados_div|length }}</span>
-    </a>
-  </li>
-  <li class="nav-item">
-    <a class="nav-link d-flex gap-2" id="tab-naoen" data-bs-toggle="tab" href="#pane-naoen" data-tab="naoen">
-      <i class="bi bi-x-circle"></i> Não encontrados <span class="badge text-bg-danger">{{ nao_encontrados|length }}</span>
-    </a>
-  </li>
-  <li class="nav-item">
-    <a class="nav-link d-flex gap-2" id="tab-mov" data-bs-toggle="tab" href="#pane-mov" data-tab="mov">
-      <i class="bi bi-arrow-left-right"></i> Em outra sala <span class="badge text-bg-info">{{ movidos|length }}</span>
-    </a>
-  </li>
-  <li class="nav-item">
-    <a class="nav-link d-flex gap-2" id="tab-rec" data-bs-toggle="tab" href="#pane-rec" data-tab="rec">
-      <i class="bi bi-sign-turn-right"></i> Cadastrados p/ outra <span class="badge text-bg-secondary">{{ recebidos_aqui|length }}</span>
-    </a>
-  </li>
-  <li class="nav-item">
-    <a class="nav-link d-flex gap-2" id="tab-ext" data-bs-toggle="tab" href="#pane-ext" data-tab="ext">
-      <i class="bi bi-clipboard-plus"></i> Sem registro <span class="badge text-bg-dark">{{ extras|length }}</span>
-    </a>
-  </li>
-</ul>
+
+{# ---------- Dropdown de tipos (substitui as abas) ---------- #}
+<div class="dropdown mb-3">
+  <button class="btn btn-outline-primary dropdown-toggle w-100" type="button" data-bs-toggle="dropdown" aria-expanded="false" id="btnTipoAtual" data-current="nao">
+    <i class="bi bi-hourglass-split"></i> Não vistoriados <span class="badge text-bg-secondary">{{ nao_vistoriados|length }}</span>
+  </button>
+  <ul class="dropdown-menu w-100 shadow" id="ddTipos">
+    <li><a class="dropdown-item d-flex justify-content-between align-items-center" href="#" data-tab="nao">
+      <span><i class="bi bi-hourglass-split me-2"></i>Não vistoriados</span>
+      <span class="badge text-bg-secondary">{{ nao_vistoriados|length }}</span>
+    </a></li>
+    <li><a class="dropdown-item d-flex justify-content-between align-items-center" href="#" data-tab="ok">
+      <span><i class="bi bi-check-circle me-2"></i>Vistoriados (OK)</span>
+      <span class="badge text-bg-success">{{ vistoriados_ok|length }}</span>
+    </a></li>
+    <li><a class="dropdown-item d-flex justify-content-between align-items-center" href="#" data-tab="div">
+      <span><i class="bi bi-exclamation-triangle me-2"></i>Divergentes</span>
+      <span class="badge text-bg-warning">{{ vistoriados_div|length }}</span>
+    </a></li>
+    <li><a class="dropdown-item d-flex justify-content-between align-items-center" href="#" data-tab="naoen">
+      <span><i class="bi bi-x-circle me-2"></i>Não encontrados</span>
+      <span class="badge text-bg-danger">{{ nao_encontrados|length }}</span>
+    </a></li>
+    <li><a class="dropdown-item d-flex justify-content-between align-items-center" href="#" data-tab="mov">
+      <span><i class="bi bi-arrow-left-right me-2"></i>Em outra sala</span>
+      <span class="badge text-bg-info">{{ movidos|length }}</span>
+    </a></li>
+    <li><a class="dropdown-item d-flex justify-content-between align-items-center" href="#" data-tab="rec">
+      <span><i class="bi bi-sign-turn-right me-2"></i>Cadastrados p/ outra</span>
+      <span class="badge text-bg-secondary">{{ recebidos_aqui|length }}</span>
+    </a></li>
+    <li><a class="dropdown-item d-flex justify-content-between align-items-center" href="#" data-tab="ext">
+      <span><i class="bi bi-clipboard-plus me-2"></i>Sem registro</span>
+      <span class="badge text-bg-dark">{{ extras|length }}</span>
+    </a></li>
+  </ul>
+</div>
 
 <div class="tab-content">
+
   {# Não vistoriados #}
-  <div class="tab-pane fade" id="pane-nao" data-pane="nao">
+  <div class="tab-pane" id="pane-nao" data-pane="nao">
     {% if nao_vistoriados %}
       <ul class="list-group list-group-flush">
         {% for b in nao_vistoriados %}
-          <li class="list-group-item d-flex justify-content-between align-items-start" data-search="{{ b.tombamento }} {{ b.descricao|default:'' }}">
+          <li class="list-group-item d-flex justify-content-between align-items-start"
+              data-search="{{ b.tombamento }} {{ b.descricao|default:'' }}">
             <div class="me-3">
               <div class="fw-semibold">{{ b.tombamento }}</div>
               <div class="text-muted small">{{ b.descricao }}</div>
@@ -95,35 +130,44 @@
           </li>
         {% endfor %}
       </ul>
-    {% else %}<div class="alert alert-light border">Nenhum item pendente nesta sala.</div>{% endif %}
+    {% else %}
+      <div class="alert alert-light border">Nenhum item pendente nesta sala.</div>
+    {% endif %}
   </div>
 
-  {# OK #}
-  <div class="tab-pane fade" id="pane-ok" data-pane="ok">
-    {% if vistoriados_ok %}
+  {# Vistoriados OK — esconder sem etiqueta #}
+  <div class="tab-pane" id="pane-ok" data-pane="ok">
+    {% with any_ok=0 %}
       <ul class="list-group list-group-flush">
         {% for b, v in vistoriados_ok %}
-          <li class="list-group-item d-flex justify-content-between align-items-start" data-search="{{ b.tombamento }} {{ b.descricao|default:'' }}">
-            <div class="me-3">
-              <div class="fw-semibold">{{ b.tombamento }}</div>
-              <div class="text-muted small">{{ b.descricao }}</div>
-            </div>
-            <a class="btn btn-outline-secondary"
-               href="{% url 'vistoria_public:vistoria_bem_form' sala_id=sala.id tombamento=b.tombamento %}">
-              <i class="bi bi-pencil-square"></i> Editar
-            </a>
-          </li>
+          {% if v.etiqueta_possui != False %}
+            {% with any_ok=1 %}
+            <li class="list-group-item d-flex justify-content-between align-items-start"
+                data-search="{{ b.tombamento }} {{ b.descricao|default:'' }}">
+              <div class="me-3">
+                <div class="fw-semibold">{{ b.tombamento }}</div>
+                <div class="text-muted small">{{ b.descricao }}</div>
+              </div>
+              <a class="btn btn-outline-secondary"
+                 href="{% url 'vistoria_public:vistoria_bem_form' sala_id=sala.id tombamento=b.tombamento %}">
+                <i class="bi bi-pencil-square"></i> Editar
+              </a>
+            </li>
+            {% endwith %}
+          {% endif %}
         {% endfor %}
       </ul>
-    {% else %}<div class="alert alert-light border">Nenhum item sem divergência ainda.</div>{% endif %}
+      {% if not any_ok %}<div class="alert alert-light border">Nenhum item sem divergência ainda.</div>{% endif %}
+    {% endwith %}
   </div>
 
-  {# Divergentes #}
-  <div class="tab-pane fade" id="pane-div" data-pane="div">
-    {% if vistoriados_div %}
+  {# Divergentes + OK sem etiqueta (reclassificação visual) #}
+  <div class="tab-pane" id="pane-div" data-pane="div">
+    {% if vistoriados_div or vistoriados_ok %}
       <ul class="list-group list-group-flush">
         {% for b, v in vistoriados_div %}
-          <li class="list-group-item d-flex justify-content-between align-items-start" data-search="{{ b.tombamento }} {{ b.descricao|default:'' }}">
+          <li class="list-group-item d-flex justify-content-between align-items-start"
+              data-search="{{ b.tombamento }} {{ b.descricao|default:'' }}">
             <div class="me-3">
               <div class="fw-semibold">{{ b.tombamento }}</div>
               <div class="text-muted small">{{ b.descricao }}</div>
@@ -134,16 +178,35 @@
             </a>
           </li>
         {% endfor %}
+        {% for b, v in vistoriados_ok %}
+          {% if v.etiqueta_possui == False %}
+            <li class="list-group-item d-flex justify-content-between align-items-start"
+                data-search="{{ b.tombamento }} {{ b.descricao|default:'' }}">
+              <div class="me-3">
+                <div class="fw-semibold">{{ b.tombamento }}</div>
+                <div class="text-muted small">{{ b.descricao }}</div>
+                <div class="small text-muted"><i class="bi bi-tag"></i> Sem etiqueta</div>
+              </div>
+              <a class="btn btn-warning"
+                 href="{% url 'vistoria_public:vistoria_bem_form' sala_id=sala.id tombamento=b.tombamento %}">
+                <i class="bi bi-exclamation-triangle"></i> Revisar
+              </a>
+            </li>
+          {% endif %}
+        {% endfor %}
       </ul>
-    {% else %}<div class="alert alert-light border">Nenhum item com divergência.</div>{% endif %}
+    {% else %}
+      <div class="alert alert-light border">Nenhum item com divergência.</div>
+    {% endif %}
   </div>
 
   {# Não encontrados #}
-  <div class="tab-pane fade" id="pane-naoen" data-pane="naoen">
+  <div class="tab-pane" id="pane-naoen" data-pane="naoen">
     {% if nao_encontrados %}
       <ul class="list-group list-group-flush">
         {% for b, v in nao_encontrados %}
-          <li class="list-group-item d-flex justify-content-between align-items-start" data-search="{{ b.tombamento }} {{ b.descricao|default:'' }}">
+          <li class="list-group-item d-flex justify-content-between align-items-start"
+              data-search="{{ b.tombamento }} {{ b.descricao|default:'' }}">
             <div class="me-3">
               <div class="fw-semibold">{{ b.tombamento }}</div>
               <div class="text-muted small">{{ b.descricao }}</div>
@@ -155,11 +218,13 @@
           </li>
         {% endfor %}
       </ul>
-    {% else %}<div class="alert alert-light border">Nenhum item marcado como não encontrado.</div>{% endif %}
+    {% else %}
+      <div class="alert alert-light border">Nenhum item marcado como não encontrado.</div>
+    {% endif %}
   </div>
 
   {# Movidos #}
-  <div class="tab-pane fade" id="pane-mov" data-pane="mov">
+  <div class="tab-pane" id="pane-mov" data-pane="mov">
     {% if movidos %}
       <ul class="list-group list-group-flush">
         {% for b, v in movidos %}
@@ -177,11 +242,13 @@
           </li>
         {% endfor %}
       </ul>
-    {% else %}<div class="alert alert-light border">Nenhum item movido para outra sala.</div>{% endif %}
+    {% else %}
+      <div class="alert alert-light border">Nenhum item movido para outra sala.</div>
+    {% endif %}
   </div>
 
   {# Recebidos aqui #}
-  <div class="tab-pane fade" id="pane-rec" data-pane="rec">
+  <div class="tab-pane" id="pane-rec" data-pane="rec">
     {% if recebidos_aqui %}
       <ul class="list-group list-group-flush">
         {% for b, v in recebidos_aqui %}
@@ -199,11 +266,13 @@
           </li>
         {% endfor %}
       </ul>
-    {% else %}<div class="alert alert-light border">Nenhum item recebido aqui com SUAP apontando outra sala.</div>{% endif %}
+    {% else %}
+      <div class="alert alert-light border">Nenhum item recebido aqui com SUAP apontando outra sala.</div>
+    {% endif %}
   </div>
 
   {# Extras #}
-  <div class="tab-pane fade" id="pane-ext" data-pane="ext">
+  <div class="tab-pane" id="pane-ext" data-pane="ext">
     {% if extras %}
       <ul class="list-group list-group-flush">
         {% for ex in extras %}
@@ -224,44 +293,73 @@
           </li>
         {% endfor %}
       </ul>
-    {% else %}<div class="alert alert-light border">Nenhum item extra nesta sala.</div>{% endif %}
+    {% else %}
+      <div class="alert alert-light border">Nenhum item extra nesta sala.</div>
+    {% endif %}
   </div>
+
 </div>
 {% endblock %}
 
 {% block extra_js %}
 <script>
 (function(){
-  const tabs = document.querySelectorAll('#tabs .nav-link');
-  const inp = document.getElementById('inpMaster');
-  const btnFiltrar = document.getElementById('btnFiltrar');
+  // --- Dropdown -> troca de "lista ativa"
+  const dd = document.getElementById('ddTipos');
+  const btnTipo = document.getElementById('btnTipoAtual');
 
-  function initialTabFromHash(){ const m=(location.hash||'').match(/t=([a-z]+)/); return m?m[1]:'nao'; }
-  function showTab(name){ const link=document.querySelector(`#tabs .nav-link[data-tab="${name}"]`); if(link){ new bootstrap.Tab(link).show(); } }
+  // inputs (mobile e desktop)
+  const inputs = document.querySelectorAll('input[data-role="search"]');
+  const btnFiltrarSm = document.getElementById('btnFiltrarSm');
+  const btnFiltrarLg = document.getElementById('btnFiltrarLg');
+
+  function activeInput(){
+    // pega o input visível (offsetParent != null quando não está display:none)
+    return Array.from(inputs).find(el => el.offsetParent !== null) || inputs[0];
+  }
+
+  function showPane(name){
+    document.querySelectorAll('.tab-pane').forEach(p=>{
+      const is = p.getAttribute('data-pane')===name;
+      p.classList.toggle('active', is);
+      p.classList.toggle('show',   is);
+      p.style.display = is ? '' : 'none';
+    });
+    const opt = dd.querySelector(`[data-tab="${name}"]`);
+    if (opt){
+      btnTipo.innerHTML = opt.innerHTML;
+      btnTipo.dataset.current = name;
+      history.replaceState(null,'','#t='+name);
+    }
+    applyFilter();
+  }
+
+  function initialTabFromHash(){
+    const m=(location.hash||'').match(/t=([a-z]+)/);
+    return m ? m[1] : 'nao';
+  }
 
   function applyFilter(){
-    const q=(inp.value||'').toLowerCase();
-    const activePane=document.querySelector('.tab-pane.active.show')||document.querySelector('.tab-pane.active');
-    if(!activePane) return;
-    activePane.querySelectorAll('[data-search]').forEach(el=>{
+    const q=(activeInput().value||'').toLowerCase();
+    const current = btnTipo?.dataset.current || 'nao';
+    const pane = document.querySelector(`.tab-pane[data-pane="${current}"]`);
+    if(!pane) return;
+    pane.querySelectorAll('[data-search]').forEach(el=>{
       const hay=(el.getAttribute('data-search')||'').toLowerCase();
       el.classList.toggle('d-none', !hay.includes(q));
     });
   }
 
-  tabs.forEach(link=>{
-    link.addEventListener('shown.bs.tab', e=>{
-      const name=e.target.getAttribute('data-tab');
-      history.replaceState(null,'','#t='+name);
-      applyFilter();
-    });
+  dd?.querySelectorAll('[data-tab]').forEach(a=>{
+    a.addEventListener('click', (ev)=>{ ev.preventDefault(); showPane(a.getAttribute('data-tab')); });
   });
 
-  if (btnFiltrar) btnFiltrar.addEventListener('click', applyFilter);
-  if (inp) inp.addEventListener('input', applyFilter);
+  inputs.forEach(i=> i.addEventListener('input', applyFilter));
+  btnFiltrarSm?.addEventListener('click', applyFilter);
+  btnFiltrarLg?.addEventListener('click', applyFilter);
 
-  showTab(initialTabFromHash());
-  applyFilter();
+  // inicialização
+  showPane(initialTabFromHash());
 })();
 </script>
 {% endblock %}

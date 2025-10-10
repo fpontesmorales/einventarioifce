@@ -187,11 +187,11 @@ JAZZMIN_SETTINGS = {
     "navigation_expanded": True,
 
     # Atalhos no topo
-    "topmenu_links": [
-        {"name": "Relatório Final", "url": "relatorios:final", "new_window": False},
-        {"name": "Relatório Operacional", "url": "relatorios:operacional", "new_window": False},
-        {"name": "Exportar fotos", "url": "relatorios:exportar_fotos", "new_window": False},
-    ],
+    #"topmenu_links": [
+    #    {"name": "Relatório Final", "url": "relatorios:final", "new_window": False},
+    #    {"name": "Relatório Operacional", "url": "relatorios:operacional", "new_window": False},
+    #    {"name": "Exportar fotos", "url": "relatorios:exportar_fotos", "new_window": False},
+    #],
 
     # Links extras sob o app "relatorios" na sidebar
     "custom_links": {
