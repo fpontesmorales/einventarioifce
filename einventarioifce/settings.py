@@ -186,16 +186,10 @@ JAZZMIN_SETTINGS = {
     # Mantém a navegação aberta
     "navigation_expanded": True,
 
-    # Atalhos no topo
-    #"topmenu_links": [
-    #    {"name": "Relatório Final", "url": "relatorios:final", "new_window": False},
-    #    {"name": "Relatório Operacional", "url": "relatorios:operacional", "new_window": False},
-    #    {"name": "Exportar fotos", "url": "relatorios:exportar_fotos", "new_window": False},
-    #],
-
     # Links extras sob o app "relatorios" na sidebar
     "custom_links": {
         "relatorios": [
+            {"name": "Execução",    "url": "relatorios:execucao",    "permissions": ["auth.view_user"]},
             {"name": "Relatório Final", "url": "relatorios:final", "icon": "fas fa-print"},
             {"name": "Relatório Operacional", "url": "relatorios:operacional", "icon": "fas fa-list-check"},
             {"name": "Exportar fotos", "url": "relatorios:exportar_fotos", "icon": "fas fa-file-archive"},

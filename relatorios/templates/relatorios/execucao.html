@@ -1,0 +1,316 @@
+{% extends "admin/base_site.html" %}
+{% load static %}
+
+{% block extrastyle %}
+  {{ block.super }}
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css">
+  <style>
+    .mini { font-size:.875rem; }
+    .kpi .display-6 { line-height:1; }
+    .table-narrow td, .table-narrow th { padding-top:.35rem; padding-bottom:.35rem; }
+  </style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-3">
+
+  <!-- Cabeçalho -->
+  <section class="py-3 border-bottom mb-3">
+    <div class="d-flex align-items-center gap-3">
+      <div class="flex-grow-1">
+        <h1 class="h4 mb-1">Inventário — Relatório de Execução</h1>
+        {% if inv %}<div class="text-muted mini">Inventário {{ inv.ano }}</div>{% endif %}
+      </div>
+      <div class="d-flex gap-2">
+        <a class="btn btn-outline-secondary" href="#" onclick="window.print();return false;">Imprimir / PDF</a>
+      </div>
+    </div>
+  </section>
+
+  <!-- Filtros -->
+  <div class="card mb-3">
+    <div class="card-header">Filtros</div>
+    <div class="card-body">
+      <form method="get" class="row g-3 align-items-end">
+        <div class="col-sm-6 col-md-3">
+          <label class="form-label">Início</label>
+          <input type="date" class="form-control" name="ini" value="{{ filtros.ini|date:'Y-m-d' }}">
+        </div>
+        <div class="col-sm-6 col-md-3">
+          <label class="form-label">Fim</label>
+          <input type="date" class="form-control" name="fim" value="{{ filtros.fim|date:'Y-m-d' }}">
+        </div>
+        <div class="col-sm-6 col-md-3">
+          <label class="form-label">Usuário</label>
+          <select name="u" class="form-select">
+            <option value="">(todos)</option>
+            {% for u in filtros.usuarios %}
+              <option value="{{ u.id }}" {% if filtros.usuario_id|stringformat:"s" == u.id|stringformat:"s" %}selected{% endif %}>{{ u.nome }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-sm-6 col-md-2">
+          <label class="form-label">Meta diária</label>
+          <input type="number" class="form-control" name="meta" value="{{ filtros.meta|default:0 }}">
+        </div>
+        <div class="col-sm-6 col-md-1">
+          <button class="btn btn-primary w-100" type="submit">OK</button>
+        </div>
+      </form>
+      <div class="mt-2 mini text-muted">Período: {{ filtros.ini|date:"d/m/Y" }} — {{ filtros.fim|date:"d/m/Y" }}</div>
+    </div>
+  </div>
+
+  {% if kpis %}
+  <!-- KPIs -->
+  <div class="row g-3 mb-3">
+    <div class="col-6 col-md-3">
+      <div class="card text-center kpi">
+        <div class="card-header">Elegíveis</div>
+        <div class="card-body"><div class="display-6">{{ kpis.elegiveis }}</div></div>
+      </div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="card text-center kpi">
+        <div class="card-header">Vistoriados (geral)</div>
+        <div class="card-body"><div class="display-6">{{ kpis.vist_total }}</div></div>
+      </div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="card text-center kpi">
+        <div class="card-header">Cobertura</div>
+        <div class="card-body"><div class="display-6">{{ kpis.cobertura|floatformat:1 }}%</div></div>
+      </div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="card text-center kpi">
+        <div class="card-header">Últimos 7 dias</div>
+        <div class="card-body"><div class="display-6">{{ kpis.ult7 }}</div></div>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
+  {% if pacing %}
+  <!-- Pacing -->
+  <div class="row g-3 mb-3">
+    <div class="col-md-8">
+      <div class="card h-100">
+        <div class="card-header">Execução no período</div>
+        <div class="card-body">
+          <div class="row gy-2">
+            <div class="col-6 col-lg-3">
+              <div class="mini text-muted">Vistoriados</div>
+              <div class="h4 mb-0">{{ pacing.vist_periodo }}</div>
+            </div>
+            <div class="col-6 col-lg-3">
+              <div class="mini text-muted">Ritmo médio/dia</div>
+              <div class="h4 mb-0">{{ pacing.ritmo_medio|floatformat:1 }}</div>
+            </div>
+            <div class="col-6 col-lg-3">
+              <div class="mini text-muted">Dias restantes</div>
+              <div class="h4 mb-0">{{ pacing.faltam_dias }}</div>
+            </div>
+            <div class="col-6 col-lg-3">
+              <div class="mini text-muted">Projeção (total)</div>
+              <div class="h4 mb-0">{{ pacing.proj_total_ate_fim }}</div>
+            </div>
+          </div>
+          {% if pacing.progress_pct != None %}
+            <hr>
+            <div class="mini text-muted mb-1">Progresso vs meta diária</div>
+            <div class="progress" role="progressbar">
+              <div class="progress-bar" style="width: {{ pacing.progress_pct }}%">{{ pacing.progress_pct }}%</div>
+            </div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+
+    <!-- Mix -->
+    <div class="col-md-4">
+      <div class="card h-100">
+        <div class="card-header">Mix (geral)</div>
+        <div class="card-body">
+          <div class="progress mb-2">
+            <div class="progress-bar bg-success" style="width: {{ mix_pct.ok }}%"></div>
+            <div class="progress-bar bg-warning" style="width: {{ mix_pct.div }}%"></div>
+            <div class="progress-bar bg-danger" style="width: {{ mix_pct.nao }}%"></div>
+          </div>
+          <ul class="list-unstyled mini mb-0">
+            <li><span class="badge text-bg-success me-1">{{ mix.ok }}</span> OK</li>
+            <li><span class="badge text-bg-warning me-1">{{ mix.div }}</span> Divergentes</li>
+            <li><span class="badge text-bg-danger me-1">{{ mix.nao }}</span> Não encontrados</li>
+            <li class="mt-2"><span class="badge text-bg-secondary me-1">{{ mix.sem_foto }}</span> Sem foto</li>
+            <li><span class="badge text-bg-secondary me-1">{{ mix.etq_ausente }}</span> Etiqueta ausente</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
+  <div class="row g-3">
+    <!-- Diárias -->
+    <div class="col-lg-6">
+      <div class="card h-100">
+        <div class="card-header d-flex justify-content-between align-items-center">
+          <span>Vistoriados por dia (período)</span>
+          <a class="btn btn-sm btn-outline-secondary" href="?ini={{ filtros.ini|date:'Y-m-d' }}&fim={{ filtros.fim|date:'Y-m-d' }}{% if filtros.usuario_id %}&u={{ filtros.usuario_id }}{% endif %}&export=diarias">CSV</a>
+        </div>
+        <div class="card-body">
+          <div class="table-responsive">
+            <table class="table table-sm table-narrow mb-0">
+              <thead class="table-light"><tr><th>Dia</th><th class="text-end">Qtd</th><th style="width:60%"></th></tr></thead>
+              <tbody>
+                {% for r in diarias %}
+                  <tr>
+                    <td>{{ r.d|date:"d/m/Y" }}</td>
+                    <td class="text-end">{{ r.qtd }}</td>
+                    <td>
+                      <div class="progress" style="height:.6rem;">
+                        <div class="progress-bar" style="width: {{ r.pct }}%"></div>
+                      </div>
+                    </td>
+                  </tr>
+                {% empty %}
+                  <tr><td colspan="3" class="text-muted">Sem dados</td></tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Semanais -->
+    <div class="col-lg-6">
+      <div class="card h-100">
+        <div class="card-header d-flex justify-content-between align-items-center">
+          <span>Vistoriados por semana (12 semanas)</span>
+          <a class="btn btn-sm btn-outline-secondary" href="?export=semanais">CSV</a>
+        </div>
+        <div class="card-body">
+          <div class="table-responsive">
+            <table class="table table-sm table-narrow mb-0">
+              <thead class="table-light"><tr><th>Semana</th><th class="text-end">Qtd</th><th style="width:60%"></th></tr></thead>
+              <tbody>
+                {% for r in semanais %}
+                  <tr>
+                    <td>{{ r.w|date:"W/Y" }}</td>
+                    <td class="text-end">{{ r.qtd }}</td>
+                    <td>
+                      <div class="progress" style="height:.6rem;">
+                        <div class="progress-bar" style="width: {{ r.pct }}%"></div>
+                      </div>
+                    </td>
+                  </tr>
+                {% empty %}
+                  <tr><td colspan="3" class="text-muted">Sem dados</td></tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Mensais -->
+    <div class="col-lg-6">
+      <div class="card h-100">
+        <div class="card-header d-flex justify-content-between align-items-center">
+          <span>Vistoriados por mês (ano corrente)</span>
+          <a class="btn btn-sm btn-outline-secondary" href="?export=mensais">CSV</a>
+        </div>
+        <div class="card-body">
+          <div class="table-responsive">
+            <table class="table table-sm table-narrow mb-0">
+              <thead class="table-light"><tr><th>Mês</th><th class="text-end">Qtd</th><th style="width:60%"></th></tr></thead>
+              <tbody>
+                {% for r in mensais %}
+                  <tr>
+                    <td>{{ r.m|date:"m/Y" }}</td>
+                    <td class="text-end">{{ r.qtd }}</td>
+                    <td>
+                      <div class="progress" style="height:.6rem;">
+                        <div class="progress-bar" style="width: {{ r.pct }}%"></div>
+                      </div>
+                    </td>
+                  </tr>
+                {% empty %}
+                  <tr><td colspan="3" class="text-muted">Sem dados</td></tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Produtividade por usuário -->
+    <div class="col-lg-6">
+      <div class="card h-100">
+        <div class="card-header d-flex justify-content-between align-items-center">
+          <span>Produtividade por usuário (período)</span>
+          <a class="btn btn-sm btn-outline-secondary" href="?ini={{ filtros.ini|date:'Y-m-d' }}&fim={{ filtros.fim|date:'Y-m-d' }}&export=usuarios">CSV</a>
+        </div>
+        <div class="card-body">
+          <div class="table-responsive">
+            <table class="table table-sm table-narrow mb-0">
+              <thead class="table-light"><tr><th>Usuário</th><th class="text-end">Qtd</th><th style="width:60%"></th></tr></thead>
+              <tbody>
+                {% for u in por_usuario %}
+                  <tr>
+                    <td>{{ u.nome }}</td>
+                    <td class="text-end">{{ u.qtd }}</td>
+                    <td>
+                      <div class="progress" style="height:.6rem;">
+                        <div class="progress-bar" style="width: {{ u.pct }}%"></div>
+                      </div>
+                    </td>
+                  </tr>
+                {% empty %}
+                  <tr><td colspan="3" class="text-muted">Sem dados</td></tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Pendências por bloco -->
+    <div class="col-lg-6">
+      <div class="card h-100">
+        <div class="card-header d-flex justify-content-between align-items-center">
+          <span>Pendências por bloco (top 10)</span>
+          <a class="btn btn-sm btn-outline-secondary" href="?export=blocos">CSV</a>
+        </div>
+        <div class="card-body">
+          <div class="table-responsive">
+            <table class="table table-sm table-narrow mb-0">
+              <thead class="table-light"><tr><th>Bloco</th><th class="text-end">Pendências</th><th style="width:60%"></th></tr></thead>
+              <tbody>
+                {% for b in por_bloco %}
+                  <tr>
+                    <td>{{ b.bloco }}</td>
+                    <td class="text-end">{{ b.qtd }}</td>
+                    <td>
+                      <div class="progress" style="height:.6rem;">
+                        <div class="progress-bar" style="width: {{ b.pct }}%"></div>
+                      </div>
+                    </td>
+                  </tr>
+                {% empty %}
+                  <tr><td colspan="3" class="text-muted">Sem dados</td></tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+{% endblock %}

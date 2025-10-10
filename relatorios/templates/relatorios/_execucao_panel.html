@@ -1,0 +1,39 @@
+<div class="mb-3">
+  <div class="d-flex align-items-center justify-content-between">
+    <h2 class="h5 mb-2">Resumo do Inventário</h2>
+    <a class="btn btn-sm btn-primary" href="{% url 'relatorios:execucao' %}">Abrir Relatório de Execução</a>
+  </div>
+
+  <div class="row g-3">
+    <div class="col-sm-2">
+      <div class="card text-center">
+        <div class="card-header">Elegíveis</div>
+        <div class="card-body"><div class="h5 mb-0">{{ elegiveis }}</div></div>
+      </div>
+    </div>
+    <div class="col-sm-2">
+      <div class="card text-center">
+        <div class="card-header">Vistoriados</div>
+        <div class="card-body"><div class="h5 mb-0">{{ vist_total }}</div></div>
+      </div>
+    </div>
+    <div class="col-sm-2">
+      <div class="card text-center">
+        <div class="card-header">Cobertura</div>
+        <div class="card-body"><div class="h5 mb-0">{{ cobertura|floatformat:1 }}%</div></div>
+      </div>
+    </div>
+    <div class="col-sm-3">
+      <div class="card text-center">
+        <div class="card-header">Últimos 7 dias</div>
+        <div class="card-body"><div class="h5 mb-0">{{ ultimos7 }}</div></div>
+      </div>
+    </div>
+    <div class="col-sm-3">
+      <div class="card text-center">
+        <div class="card-header">Pico / Vale (7d)</div>
+        <div class="card-body"><div class="h5 mb-0">{{ melhor }}/{{ pior }}</div></div>
+      </div>
+    </div>
+  </div>
+</div>
